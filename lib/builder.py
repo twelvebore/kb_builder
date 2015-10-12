@@ -57,6 +57,8 @@ class Plate(object):
         self.kerf = 0.0
         self.x_pad = 0
         self.y_pad = 0
+        self.x_pcb_pad = 0
+        self.y_pcb_pad = 0
         self.x_off = 0
         self.grow_y = 0
         self.grow_x = 0
@@ -79,6 +81,7 @@ class Plate(object):
         self.case = {'type':None}
         self.origin = (0,0)
         self.usb_width = 10
+        self.usb_offset = 0
 
 
     def set_x_pad(self, x):
@@ -86,6 +89,18 @@ class Plate(object):
 
     def set_y_pad(self, y):
         self.y_pad = y
+
+    def set_x_pcb_pad(self, x):
+        self.x_pcb_pad = x/2
+
+    def set_y_pcb_pad(self, y):
+        self.y_pcb_pad = y/2
+
+    def set_usb_width(self, w):
+        self.usb_width = w
+
+    def set_usb_offset(self, o):
+        self.usb_offset = o
 
     def set_thickness(self, t):
         self.thickness = t
@@ -102,7 +117,7 @@ class Plate(object):
             self.switch_type = t
 
     def set_stab_type(self, s):
-        if s in range(3):
+        if s in range(5):
             log.info('Setting stab-type to %s', s)
             self.stab_type = s
 
@@ -121,8 +136,6 @@ class Plate(object):
         result['height'] = self.height
 
         # cut the mount holes in the plate
-        if not self.case['type']:
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
         if self.case['type'] == 'poker':
             hole_points = [(-139,9.2), (-117.3,-19.4), (-14.3,0), (48,37.9), (117.55,-19.4), (139,9.2)] # holes
             rect_points = [(140.75,9.2), (-140.75,9.2)] # edge slots
@@ -132,7 +145,7 @@ class Plate(object):
             for c in rect_points:
                 p = self.cut_rect(p, c, rect_size[0], rect_size[1]).center(-c[0],-c[1])
             p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
-        if self.case['type'] == 'sandwich':
+        elif self.case['type'] == 'sandwich':
             p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
             if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
                 self.layout_sandwich_holes()
@@ -151,6 +164,10 @@ class Plate(object):
                 if result['has_layers']:
                     self.export(p, result, BOTTOM_LAYER, data_hash, config)
                 p = p.center(-self.x_pad/2, -self.y_pad/2)
+        elif not self.case['type']:
+            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+        else:
+            log.error('Unknown case type: %s', self.case['type'])
 
         # cut all the switch and stabilizer openings...
         prev_width = None
@@ -165,8 +182,8 @@ class Plate(object):
                     y = key['y']*self.u1
                 if r == 0 and k == 0: # handle placement of the first key in first row
                     p = self.center(p, key['w']*self.u1/2, self.u1/2)
-                    x += self.x_pad
-                    y += self.y_pad
+                    x += (self.x_pad+self.x_pcb_pad)
+                    y += (self.y_pad+self.y_pcb_pad)
                     # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
                     self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
                 elif k == 0: # handle changing rows
@@ -188,7 +205,7 @@ class Plate(object):
         # cut layers
         if result['has_layers']:
             # closed layer
-            p = p.center(-self.origin[0], -self.origin[1])
+            p = p.center(-self.origin[0], -self.origin[1])  # move to the center of the plate
             points = [
                 (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2), (self.width/2-self.x_pad-self.kerf*2,-self.height/2+self.y_pad+self.kerf*2),
                 (self.width/2-self.x_pad-self.kerf*2,self.height/2-self.y_pad-self.kerf*2), (-self.width/2+self.x_pad+self.kerf*2,self.height/2-self.y_pad-self.kerf*2),
@@ -198,11 +215,12 @@ class Plate(object):
             self.export(p, result, CLOSED_LAYER, data_hash, config)
 
             # open layer
-            p = p.center(0, -self.height/2+self.y_pad/2+self.kerf)
+            p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
+
             points = [
-                (-self.usb_width/2+self.kerf,-self.y_pad/2-self.kerf), (self.usb_width/2-self.kerf,-self.y_pad/2-self.kerf),
-                (self.usb_width/2-self.kerf,self.y_pad/2+self.kerf), (-self.usb_width/2+self.kerf,self.y_pad/2+self.kerf),
-                (-self.usb_width/2+self.kerf,-self.y_pad/2-self.kerf)
+                (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf), (self.usb_width/2+self.usb_offset-self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+                (self.usb_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf), (-self.usb_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf)
             ]
             p = p.polyline(points).cutThruAll()
             self.export(p, result, OPEN_LAYER, data_hash, config)
@@ -251,8 +269,8 @@ class Plate(object):
                     self.grow_y = row['grow_y']/2
                 if 'grow_x' in row and (type(row['grow_x']) == int or type(row['grow_x']) == float):
                     self.grow_x = row['grow_x']/2
-        self.width = layout_width*self.u1 + 2*self.x_pad + 2*self.kerf
-        self.height = layout_height + 2*self.y_pad + 2*self.kerf
+        self.width = layout_width*self.u1 + 2*(self.x_pad+self.x_pcb_pad) + 2*self.kerf
+        self.height = layout_height + 2*(self.y_pad+self.y_pcb_pad) + 2*self.kerf
 
 
     # initialize the plate object 'p' and get it ready to work with
@@ -404,6 +422,34 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
+            if s in (3, 4):
+                # Alps stabilizers
+                top_y = 4
+                bottom_y = 9
+                inside_x = 16.7 if w == 2.75 else 12.7
+                outside_x = inside_x + 2.7
+
+                points_r = [
+                    (inside_x+k, top_y+k), (outside_x-k, top_y+k),
+                    (outside_x-k, bottom_y-k), (inside_x+k, bottom_y-k),
+                    (inside_x+k, top_y+k)
+                ]
+                inside_x *= -1
+                outside_x *= -1
+                points_l = [
+                    (inside_x+k, top_y+k), (outside_x-k, top_y+k),
+                    (outside_x-k, bottom_y-k), (inside_x+k, bottom_y-k),
+                    (inside_x+k, top_y+k)
+                ]
+
+                if rotate:
+                    points_l = self.rotate_points(points_l, 90, (0,0))
+                    points_r = self.rotate_points(points_r, 90, (0,0))
+                if rs:
+                    points_l = self.rotate_points(points_l, rs, (0,0))
+                    points_r = self.rotate_points(points_r, rs, (0,0))
+                p = p.polyline(points_l).cutThruAll()
+                p = p.polyline(points_r).cutThruAll()
 
         # cut spacebar stabilizer cutout
         if (w >= 3) or (rotate and h >= 3):
@@ -441,7 +487,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            if s == 2:
+            if s in (2, 3):
                 # costar stabilizers only
                 points_l = [(-x+1.65-k,-6.45+k), (-x-1.65+k,-6.45+k), (-x-1.65+k,7.75-k), (-x+1.65-k,7.75-k), (-x+1.65-k,-6.45+k)]
                 points_r = [(x-1.65+k,-6.45+k), (x+1.65-k,-6.45+k), (x+1.65-k,7.75-k), (x-1.65+k,7.75-k), (x-1.65+k,-6.45+k)]
@@ -453,6 +499,12 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
+            if s == 4:
+                # Alps stabilizers only
+                # FIXME: Write this
+                log.error('Vintage alps stabilizers for spacebar not implemented!')
+
+
         self.x_off += c[0]
         return p
 
@@ -476,6 +528,8 @@ class Plate(object):
         settings['case_type_and_holes'] = self.case
         settings['width_padding'] = self.x_pad
         settings['height_padding'] = self.y_pad
+        settings['pcb_width_padding'] = self.x_pcb_pad
+        settings['pcb_height_padding'] = self.y_pcb_pad
         settings['plate_corners'] = self.fillet
         settings['kerf'] = self.kerf
         # XXX line colour?
@@ -550,16 +604,25 @@ def build(data_hash, data, config):
         p.set_switch_type(int(data['switch-type']))
     if 'stab-type' in data:
         p.set_stab_type(int(data['stab-type']))
+    # FIXME: You're trying to make the inside hole bigger for the PCB. You just added a bunch of x_pcb_padding and y_pcb_padding vars
     if 'width-padding' in data:
         p.set_x_pad(float(data['width-padding']))
     if 'height-padding' in data:
         p.set_y_pad(float(data['height-padding']))
+    if 'pcb-width-padding' in data:
+        p.set_x_pcb_pad(float(data['pcb-width-padding']))
+    if 'pcb-height-padding' in data:
+        p.set_y_pcb_pad(float(data['pcb-height-padding']))
     if 'fillet' in data:
         p.set_fillet(float(data['fillet']))
     if 'thickness' in data:
         p.set_thickness(float(data['thickness']))
     if 'kerf' in data:
         p.set_kerf(float(data['kerf']))
+    if 'usb_offset' in data:
+        p.set_usb_offset(float(data['usb_offset']))
+    if 'usb_width' in data:
+        p.set_usb_width(float(data['usb_width']))
     if 'export_svg' in data and not data['export_svg']:
         result['formats'].remove('svg')
     result = p.draw(result, data['layout'], data_hash, config) # draw the plate

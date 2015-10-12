@@ -13,8 +13,7 @@ Here are some examples of the types of features that are exposed. The following 
 * `{_r:<degrees>}`: Rotate the switch cutout independent of the stabilizer cutout (assuming there is one). EG: `{_r:90},""`
 * `{_rs:<degrees>}`: Rotate the stabilizer cutout independent of the switch cutout. EG: `{_rs:180},""`
 
-This tool is implemented as a webserver and exposes a UI to be consumed in the browser, but it is not fit for actual web traffic because it can not handle drawing more than one layout at a time.  This however should not be a limitiation for personal use.
-
+This tool is implemented as both a webserver which exposes a UI to be consumed in the browser and a CLI that can be run from the shell. The web server is not fit for actual web traffic because it can not handle drawing more than one layout at a time.  This however should not be a limitiation for personal use.
 
 ## Installation and Configuration
 
@@ -26,14 +25,8 @@ $ sudo apt-get install software-properties-common
 $ sudo add-apt-repository ppa:freecad-maintainers/freecad-daily
 $ sudo apt-get update
 $ sudo apt-get upgrade
-$ sudo apt-get -y install unzip
-$ sudo apt-get -y install build-essential
-$ sudo apt-get -y install freecad
-$ sudo apt-get -y install git
-$ sudo apt-get -y install python-pip
-$ sudo apt-get -y install python-dev
-$ sudo pip install tornado
-$ sudo pip install cadquery
+$ sudo apt-get -y install unzip build-essential freecad git python-pip python-dev
+$ sudo pip install tornado cadquery hjson
 ```
 
 ### Install the Draft-dxf-importer
@@ -54,14 +47,24 @@ $ cp Draft-dxf-importer-1.38/* /root/.FreeCAD/
 	#	not your users because we are running with 'sudo'
 ```
 
-### Get the source and run
+## Get the source
 ```
-$ git clone https://github.com/swill/kb_builder.git
-$ cd kb_builder
+$ git clone https://github.com/swill/kb_builder.git ~/kb_builder
+```
+
+## Running the tool
+
+There are two ways to use the tool. You can use the Web UI through your 
+browser, or the CLI in Terminal.
+
+### Using the Web Frontend
+
+```
+$ cd ~/kb_builder
 $ sudo ./kb_builder.py
 ```
 
-### Accessing the UI
+#### Accessing the UI
 I am assuming most people will be using VirtualBox, so here are some additional details for viewing the UI from the host machine as well as instructions for how to SSH into the box.
 
 ```
@@ -74,11 +77,46 @@ $ ifconfig
 # You can SSH to the VM with: ssh your_user@<IP>
 ``` 
 
+### Using the CLI
+
+If you don't want to fire up the web interface you can generate files locally
+using the CLI. There are lots of options for tweaking your plate and generating
+cases, please review "./kb_cli -h" to see all the options you can set.
+
+In the simplest case you simply run "./kb_cli -f <file>" to generate a plate:
+
+```
+zwhite@ubuntu:~/kb_builder$ ./kb_cli -f cnc_pad.kle
+FreeCAD 0.16, Libs: 0.16R5701 (Git)
+...
+Writing STEP file......
+Face...
+
+*******************************************************************
+******        Statistics on Transfer (Write)                 ******
+
+*******************************************************************
+******        Transfer Mode = 0  I.E.  As Is       ******
+******        Transferring Shape, ShapeType = 0                      ******
+** WorkSession : Sending all data
+ Step File Name : /home/zwhite/kb_builder/static/exports/switch_cnc_pad.kle.stp(15006 ents)  Write  Done
+saving......
+processing Shape				(99.0 %)
+successfully exported /home/zwhite/kb_builder/static/exports/switch_cnc_pad.kle.dxf
+**** Overall plate size: 103.25 x 103.25 mm
+*** Files exported for plate switch
+* static/exports/switch_cnc_pad.kle.js
+* static/exports/switch_cnc_pad.kle.brp
+* static/exports/switch_cnc_pad.kle.stp
+* static/exports/switch_cnc_pad.kle.stl
+* static/exports/switch_cnc_pad.kle.dxf
+* static/exports/switch_cnc_pad.kle.json
+```
 
 ## License
 
 ```
-kb_builder builts keyboard plate and case CAD files using JSON input.
+kb_builder builts keyboard plate and case CAD files using JSON(-like) input.
 
 Copyright (C) 2015  Will Stevens (swill)
 

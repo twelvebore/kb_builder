@@ -1,5 +1,7 @@
+*.kle
 *.log
 *.pyc
 *.swp
+.DS_Store
 .idea
 static/exports

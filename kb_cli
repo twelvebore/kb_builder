@@ -22,15 +22,19 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--file', help='File containing the KLE data.')
 parser.add_argument('-n', '--name', help='Output file basename (Default: generate a hash or use -f)')
 parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, alps')
-parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps')
+parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
-parser.add_argument('--holes', default=6, type=int, help='Number of holes in the case (Default: 6)')
-parser.add_argument('--hole-diameter', default=3, type=int, help='Case hole size in mm (Default: 3)')
-parser.add_argument('--height', default=4, type=int, help='Amount to pad the height (Default: 4)')
-parser.add_argument('--width', default=4, type=int, help='Amount to pad the width (Default: 4)')
-parser.add_argument('--corners', default=0, type=int, help='Radius for rounded corners, 0 to disable (Default: 0)')
-parser.add_argument('--thickness', default=0, type=int, help='Plate thickness, 0 to disable (Default: 0)')
-parser.add_argument('--kerf', default=0, type=int, help='Kerf, 0 to disable (Default: 0)')
+parser.add_argument('--holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
+parser.add_argument('--hole-diameter', default=4, type=float, help='Case hole size in mm (Default: 4)')
+parser.add_argument('--usb-width', default=10, type=float, help='Default width for the USB connector cutout')
+parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
+parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
+parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
+parser.add_argument('--pcb-height', default=0, type=float, help='Amount to pad the height of the cutout to accommodate a pcb (Default: 0)')
+parser.add_argument('--pcb-width', default=0, type=float, help='Amount to pad the width of the cutout to accommodate a pcb (Default: 0)')
+parser.add_argument('--corners', default=0, type=float, help='Radius for rounded corners, 0 to disable (Default: 0)')
+parser.add_argument('--thickness', default=0, type=float, help='Plate thickness, 0 to disable (Default: 0)')
+parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (Default: 0)')
 parser.add_argument('--svg', action='store_true', help='Generate an SVG file too.')
 args = parser.parse_args()
 
@@ -38,13 +42,13 @@ args = parser.parse_args()
 if args.switch:
     if args.switch == 'mx':
         args.switch = 1
-    if args.switch == 'alpsmx':
+    elif args.switch == 'alpsmx':
         args.switch = 2
-    if args.switch == 'mx-open':
+    elif args.switch == 'mx-open':
         args.switch = 3
-    if args.switch == 'alps':
+    elif args.switch == 'alps':
         args.switch = 4
-    if args.switch in '1234':
+    elif args.switch in ('1', '2', '3', '4'):
         args.switch = int(args.switch)
     else:
         logging.error('Unknown switch type: %s', args.switch)
@@ -56,13 +60,15 @@ else:
 if args.stab:
     if args.stab == 'cherry':
         args.stab = 1
-    if args.stab == 'costar':
+    elif args.stab == 'costar':
         args.stab = 2
-    if args.stab == 'cherry-costar':
+    elif args.stab == 'cherry-costar':
+        args.stab = 0
+    elif args.stab == 'matias':
         args.stab = 3
-    if args.stab == 'alps':
+    elif args.stab == 'alps':
         args.stab = 4
-    if args.stab in '1234':
+    elif args.stab in ('1', '2', '3', '4', '5'):
         args.stab = int(args.stab)
     else:
         logging.error('Unknown stab type: %s', args.stab)
@@ -99,9 +105,13 @@ if __name__ == '__main__':
         'mount-holes-size': args.hole_diameter,
         'width-padding': args.width,
         'height-padding': args.height,
+        'pcb-width-padding': args.pcb_width,
+        'pcb-height-padding': args.pcb_height,
         'fillet': args.corners,
         'thickness': args.thickness,
         'kerf': args.kerf,
+        'usb_width': args.usb_width,
+        'usb_offset': args.usb_offset,
         'export_svg': args.svg,
         'layout': layout,
     }
