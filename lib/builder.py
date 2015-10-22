@@ -585,9 +585,9 @@ class Plate(object):
                     (alps_stab_inside_x+k, alps_stab_top_y+k)
                 ]
                 points_l = [
-                    (-alps_stab_inside_x+k, -alps_stab_top_y+k), (-alps_stab_ouside_x-k, -alps_stab_top_y+k),
-                    (-alps_stab_ouside_x-k, -alps_stab_bottom_y-k), (-alps_stab_inside_x+k, -alps_stab_bottom_y-k),
-                    (-alps_stab_inside_x+k, -alps_stab_top_y+k)
+                    (-alps_stab_inside_x+k, alps_stab_top_y+k), (-alps_stab_ouside_x-k, alps_stab_top_y+k),
+                    (-alps_stab_ouside_x-k, alps_stab_bottom_y-k), (-alps_stab_inside_x+k, alps_stab_bottom_y-k),
+                    (-alps_stab_inside_x+k, alps_stab_top_y+k)
                 ]
 
                 if rotate:
