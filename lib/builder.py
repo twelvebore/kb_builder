@@ -43,6 +43,8 @@ import Mesh
 import Part
 
 SWITCH_LAYER = 'switch'
+REINFORCING_LAYER = 'reinforcing'
+TOP_LAYER = 'top'
 BOTTOM_LAYER = 'bottom'
 CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
@@ -170,37 +172,71 @@ class Plate(object):
             log.error('Unknown case type: %s', self.case['type'])
 
         # cut all the switch and stabilizer openings...
-        prev_width = None
-        prev_y_off = 0
-        for r, row in enumerate(self.layout):
-            for k, key in enumerate(row):
-                x, y, kx = 0, 0, 0
-                if 'x' in key:
-                    x = key['x']*self.u1
-                    kx = x
-                if 'y' in key and k == 0:
-                    y = key['y']*self.u1
-                if r == 0 and k == 0: # handle placement of the first key in first row
-                    p = self.center(p, key['w']*self.u1/2, self.u1/2)
-                    x += (self.x_pad+self.x_pcb_pad)
-                    y += (self.y_pad+self.y_pcb_pad)
-                    # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
-                    self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
-                elif k == 0: # handle changing rows
-                    p = self.center(p, -self.x_off, self.u1) # move to the next row
-                    self.x_off = 0 # reset back to the left side of the plate
-                    x += self.u1/2 + key['w']*self.u1/2
-                else: # handle all other keys
-                    x += prev_width*self.u1/2 + key['w']*self.u1/2
-                if prev_y_off != 0: # prev_y_off != 0
-                    y += -prev_y_off
-                    prev_y_off = 0
-                if 'h' in key and key['h'] > 1: # deal with vertical keys
-                    prev_y_off = key['h']*self.u1/2 - self.u1/2
-                    y += prev_y_off
-                p = self.cut_switch(p, (x, y), key)
-                prev_width = key['w']
-        self.export(p, result, SWITCH_LAYER, data_hash, config)
+        for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
+            if layer != SWITCH_LAYER and not result['has_layers']:
+                break
+
+            prev_width = None
+            prev_y_off = 0
+
+            if layer != SWITCH_LAYER:
+                p = self.center(p, -self.origin[0], -self.origin[1]) # move to the center of the plate
+                p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+
+            for r, row in enumerate(self.layout):
+                for k, key in enumerate(row):
+                    x, y, kx = 0, 0, 0
+                    if 'x' in key:
+                        x = key['x']*self.u1
+                        kx = x
+
+                    if 'y' in key and k == 0:
+                        y = key['y']*self.u1
+
+                    if r == 0 and k == 0: # handle placement of the first key in first row
+                        p = self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
+                        x += (self.x_pad+self.x_pcb_pad)
+                        y += (self.y_pad+self.y_pcb_pad)
+                        # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
+                        self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
+                    elif k == 0: # handle changing rows
+                        p = self.center(p, -self.x_off, self.u1) # move to the next row
+                        self.x_off = 0 # reset back to the left side of the plate
+                        x += self.u1/2 + key['w']*self.u1/2
+                    else: # handle all other keys
+                        x += prev_width*self.u1/2 + key['w']*self.u1/2
+
+                    if prev_y_off != 0: # prev_y_off != 0
+                        y += -prev_y_off
+                        prev_y_off = 0
+
+                    if 'h' in key and key['h'] > 1: # deal with vertical keys
+                        prev_y_off = key['h']*self.u1/2 - self.u1/2
+                        y += prev_y_off
+
+                    if False and layer == TOP_LAYER:
+                        horizontal = 17 * key['w']
+                        vertical = 17 * key['h']
+                        points = [
+                            (-horizontal+self.kerf, vertical-self.kerf), (horizontal-self.kerf, vertical-self.kerf),
+                            (horizontal-self.kerf, -vertical+self.kerf), (-horizontal+self.kerf, -vertical+self.kerf),
+                            (-horizontal+self.kerf, vertical-self.kerf)
+                        ]
+                        print 'TOP_LAYER', points
+
+                        if 'h' in key and key['h'] > key['w']:
+                            points = self.rotate_points(points, 90, (0,0))
+                        if '_r' in key:
+                            points = self.rotate_points(points, r, (0,0))
+
+                        p = p.polyline(points).cutThruAll()
+
+                    else:
+                        p = self.cut_switch(p, (x, y), key, layer)
+
+                    prev_width = key['w']
+
+            self.export(p, result, layer, data_hash, config)
 
         # cut layers
         if result['has_layers']:
@@ -328,7 +364,17 @@ class Plate(object):
 
 
     # cut a switch opening with center 'c' defined by the 'key'
-    def cut_switch(self, p, c, key=None):
+    def cut_switch(self, p, c, key=None, layer=SWITCH_LAYER):
+        """Cut a switch opening
+
+        p: The plate object
+
+        c: Center of the switch
+
+        key: A dictionary describing this key, if not provided a 1u key at 0,0 will be used.
+
+        layer: The layer we're cutting
+        """
         if not key:
             key = {}
 
@@ -339,43 +385,128 @@ class Plate(object):
         k = key['_k']/2 if '_k' in key else self.kerf
         r = key['_r'] if '_r' in key else None
         rs = key['_rs'] if '_rs' in key else None
+        offset = 0
 
         # cut switch cutout
         rotate = None
         if 'h' in key and h > w:
             rotate = True
         points = []
+
+        # Standard locations with no offset
+        mx_height = 7
+        mx_width = 7
+        alps_height = 6.4
+        alps_width = 7.8
+        wing_inside = 2.9
+        wing_outside = 6
+        # FIXME: Use more descriptive names here
+        stab_1 = 4.73
+        stab_2 = 8.575
+        stab_3 = 5.53
+        stab_4 = 10.3
+        stab_5 = 6.45
+        stab_6 = 13.6
+        stab_7 = 15.225
+        stab_8 = 2.3
+        stab_9 = 16.1
+        stab_10 = 0.5
+        stab_11 = 6.77
+        stab_12 = 7.75
+        stab_13 = 5.97
+        stab_14 = 7.97
+        stab_15 = 3.325
+        stab_16 = 1.65
+        stab_17 = 4.2
+        alps_stab_top_y = 4
+        alps_stab_bottom_y = 9
+        alps_stab_inside_x = 16.7 if w == 2.75 else 12.7
+        alps_stab_ouside_x = alps_stab_inside_x + 2.7
+
+        if layer is TOP_LAYER:
+            # Cut out openings the size of keycaps
+            t = 0
+            s = 1
+            mx_width = (self.u1/2) * w
+            mx_height = self.u1/2
+        elif layer is REINFORCING_LAYER:
+            offset = 1
+            mx_height += offset
+            mx_width += offset
+            alps_height += offset
+            alps_width += offset
+            wing_inside += offset
+            wing_outside += offset
+            stab_1 += offset
+            stab_2 += offset
+            stab_3 += offset
+            stab_4 += offset
+            stab_5 += offset
+            stab_6 += offset
+            stab_7 += offset
+            stab_8 += offset
+            stab_9 += offset
+            stab_10 += offset
+            stab_11 += offset
+            stab_12 += offset
+            stab_13 += offset
+            stab_14 += offset
+            stab_15 += offset
+            stab_16 += offset
+            stab_17 += offset
+            alps_stab_top_y += offset
+            alps_stab_bottom_y += offset
+            alps_stab_inside_x += offset
+            alps_stab_ouside_x += offset
+
         if t == 0: # standard square switch
             points = [
-                (7-k+self.grow_x,-7+k-self.grow_y), (7-k+self.grow_x,7-k+self.grow_y),
-                (-7+k-self.grow_x,7-k+self.grow_y), (-7+k-self.grow_x,-7+k-self.grow_y),
-                (7-k+self.grow_x,-7+k-self.grow_y)
+                (mx_width-k+self.grow_x,-mx_height+k-self.grow_y), (mx_width-k+self.grow_x,mx_height-k+self.grow_y),
+                (-mx_width+k-self.grow_x,mx_height-k+self.grow_y), (-mx_width+k-self.grow_x,-mx_height+k-self.grow_y),
+                (mx_width-k+self.grow_x,-mx_height+k-self.grow_y)
             ]
         elif t == 1: # mx and alps compatible switch, mx can open
             points = [
-                (7-k,-7+k), (7-k,-6.4+k), (7.8-k,-6.4+k), (7.8-k,6.4-k), (7-k,6.4-k), (7-k,7-k),
-                (-7+k,7-k), (-7+k,6.4-k), (-7.8+k,6.4-k), (-7.8+k,-6.4+k), (-7+k,-6.4+k), (-7+k,-7+k), (7-k,-7+k)
+                (mx_width-k,-mx_height+k), (mx_width-k,-alps_height+k), (alps_width-k,-alps_height+k),
+                (alps_width-k,alps_height-k), (mx_width-k,alps_height-k), (mx_width-k,mx_height-k),
+                (-mx_width+k,mx_height-k), (-mx_width+k,alps_height-k), (-alps_width+k,alps_height-k),
+                (-alps_width+k,-alps_height+k), (-mx_width+k,-alps_height+k), (-mx_width+k,-mx_height+k),
+                (mx_width-k,-mx_height+k)
             ]
         elif t == 2: # mx switch can open (side wings)
             points = [
-                (7-k,-7+k), (7-k,-6+k), (7.8-k,-6+k), (7.8-k,-2.9-k), (7-k,-2.9-k),
-                (7-k,2.9+k), (7.8-k,2.9+k), (7.8-k,6-k), (7-k,6-k), (7-k,7-k), (-7+k,7-k),
-                (-7+k,6-k), (-7.8+k,6-k), (-7.8+k,2.9+k), (-7+k,2.9+k),
-                (-7+k,-2.9-k), (-7.8+k,-2.9-k), (-7.8+k,-6+k), (-7+k,-6+k), (-7+k,-7+k), (7-k,-7+k)
+                (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
+                (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
+                (alps_width-k,wing_inside+k), (alps_width-k,wing_outside-k), (mx_width-k,wing_outside-k),
+                (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,wing_outside-k),
+                (-alps_width+k,wing_outside-k), (-alps_width+k,wing_inside+k), (-mx_width+k,wing_inside+k),
+                (-mx_width+k,-wing_inside-k), (-alps_width+k,-wing_inside-k), (-alps_width+k,-wing_outside+k),
+                (-mx_width+k,-wing_outside+k), (-mx_width+k,-mx_height+k), (mx_width-k,-mx_height+k)
             ]
         elif t == 3: # rotatable mx switch can open both ways (side and top/bottom wings)
             points = [
-                (7-k,-7+k), (7-k,-6+k), (7.8-k,-6+k), (7.8-k,-2.9-k), (7-k,-2.9-k), (7-k,2.9+k), (7.8-k,2.9+k), (7.8-k,6-k), (7-k,6-k),
-                (7-k,7-k), (6-k,7-k), (6-k,7.8-k), (2.9+k,7.8-k), (2.9+k,7-k), (-2.9-k,7-k), (-2.9-k,7.8-k), (-6+k,7.8-k), (-6+k,7-k),
-                (-7+k,7-k), (-7+k,6-k), (-7.8+k,6-k), (-7.8+k,2.9+k), (-7+k,2.9+k), (-7+k,-2.9-k), (-7.8+k,-2.9-k), (-7.8+k,-6+k), (-7+k,-6+k),
-                (-7+k,-7+k), (-6+k,-7+k), (-6+k,-7.8+k), (-2.9-k,-7.8+k), (-2.9-k,-7+k), (2.9+k,-7+k), (2.9+k,-7.8+k), (6-k,-7.8+k), (6-k,-7+k), (7-k,-7+k)
+                (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
+                (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
+                (alps_width-k,wing_inside+k), (alps_width-k,wing_outside-k), (mx_width-k,wing_outside-k),
+                (mx_width-k,mx_height-k), (wing_outside-k,mx_height-k), (wing_outside-k,alps_width-k),
+                (wing_inside+k,alps_width-k), (wing_inside+k,mx_height-k), (-wing_inside-k,mx_height-k),
+                (-wing_inside-k,alps_width-k), (-wing_outside+k,alps_width-k), (-wing_outside+k,7-k),
+                (-mx_width+k,mx_height-k), (-mx_width+k,wing_outside-k), (-alps_width+k,wing_outside-k),
+                (-alps_width+k,wing_inside+k), (-mx_width+k,wing_inside+k), (-mx_width+k,-wing_inside-k),
+                (-alps_width+k,-wing_inside-k), (-alps_width+k,-wing_outside+k), (-mx_width+k,-wing_outside+k),
+                (-mx_width+k,-mx_height+k), (-wing_outside+k,-mx_height+k), (-wing_outside+k,-alps_width+k),
+                (-wing_inside-k,-alps_width+k), (-wing_inside-k,-mx_height+k), (wing_inside+k,-mx_height+k),
+                (wing_inside+k,-alps_width+k), (wing_outside-k,-alps_width+k), (wing_outside-k,-mx_height+k),
+                (mx_width-k,-mx_height+k)
             ]
         elif t == 4: # alps compatible switch, not MX compatible
             points = [
-                (7.75-k,-6.4+k), (7.75-k,6.4-k),
-                (-7.75+k,6.4-k), (-7.75+k,-6.4+k),
-                (7.75-k,-6.4+k),
+                (alps_width-k,-alps_height+k),
+                (alps_width-k,alps_height-k),
+                (-alps_width+k,alps_height-k), (-alps_width+k,-alps_height+k),
+                (alps_width-k,-alps_height+k),
             ]
+
         if rotate:
             points = self.rotate_points(points, 90, (0,0))
         if r:
@@ -383,14 +514,26 @@ class Plate(object):
         p = self.center(p, c[0] ,c[1]).polyline(points).cutThruAll()
 
         # cut 2 unit stabilizer cutout
-        if (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
+        if layer == TOP_LAYER:
+            self.x_off += c[0]
+            return p
+
+        elif (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
             if s == 0:
                 # modified mx cherry spec 2u stabilizer to support costar
                 points = [
-                    (7-k,-7+k), (7-k,-4.73+k), (8.575+k,-4.73+k), (8.575+k,-5.53+k), (10.3+k,-5.53+k), (10.3+k,-6.45+k), (13.6-k,-6.45+k), (13.6-k,-5.53+k), (15.225-k,-5.53+k), (15.225-k,-2.3+k), (16.1-k,-2.3+k),
-                    (16.1-k,0.5-k), (15.225-k,0.5-k), (15.225-k,6.77-k), (13.6-k,6.77-k), (13.6-k,7.75-k), (10.3+k,7.75-k), (10.3+k,6.77-k), (8.575+k,6.77-k), (8.575+k,5.97-k), (7-k,5.97-k), (7-k,7-k),
-                    (-7+k,7-k), (-7+k,5.97-k), (-8.575-k,5.97-k), (-8.575-k,6.77-k), (-10.3-k,6.77-k), (-10.3-k,7.75-k), (-13.6+k,7.75-k), (-13.6+k,6.77-k), (-15.225+k,6.77-k), (-15.225+k,0.5-k), (-16.1+k,0.5-k),
-                    (-16.1+k,-2.3+k), (-15.225+k,-2.3+k), (-15.225+k,-5.53+k), (-13.6+k,-5.53+k), (-13.6+k,-6.45+k), (-10.3-k,-6.45+k), (-10.3-k,-5.53+k), (-8.575-k,-5.53+k), (-8.575-k,-4.73+k), (-7+k,-4.73+k), (-7+k,-7+k), (7-k,-7+k)
+                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_1+k), (stab_2+k,-stab_1+k), (stab_2+k,-stab_3+k),
+                    (stab_4+k,-stab_3+k), (stab_4+k,-stab_5+k), (stab_6-k,-stab_5+k), (stab_6-k,-stab_3+k),
+                    (stab_7-k,-stab_3+k), (stab_7-k,-stab_8+k), (stab_9-k,-stab_8+k), (stab_9-k,stab_10-k),
+                    (stab_7-k,stab_10-k), (stab_7-k,stab_11-k), (stab_6-k,stab_11-k), (stab_6-k,stab_12-k),
+                    (stab_4+k,stab_12-k), (stab_4+k,stab_11-k), (stab_2+k,stab_11-k), (stab_2+k,stab_13-k),
+                    (mx_width-k,stab_13-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_13-k),
+                    (-stab_2-k,stab_13-k), (-stab_2-k,stab_11-k), (-stab_4-k,stab_11-k), (-stab_4-k,stab_12-k),
+                    (-stab_6+k,stab_12-k), (-stab_6+k,stab_11-k), (-stab_7+k,stab_11-k), (-stab_7+k,stab_10-k),
+                    (-stab_9+k,stab_10-k), (-stab_9+k,-stab_8+k), (-stab_7+k,-stab_8+k), (-stab_7+k,-stab_3+k),
+                    (-stab_6+k,-stab_3+k), (-stab_6+k,-stab_5+k), (-stab_4-k,-stab_5+k), (-stab_4-k,-stab_3+k),
+                    (-stab_2-k,-stab_3+k), (-stab_2-k,-stab_1+k), (-mx_width+k,-stab_1+k), (-mx_width+k,-mx_height+k),
+                    (mx_width-k,-mx_height+k)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
@@ -400,10 +543,16 @@ class Plate(object):
             if s == 1:
                 # cherry spec 2u stabilizer
                 points = [
-                    (7-k,-7+k), (7-k,-4.73+k), (8.575+k,-4.73+k), (8.575+k,-5.53+k), (15.225-k,-5.53+k), (15.225-k,-2.3+k), (16.1-k,-2.3+k),
-                    (16.1-k,0.5-k), (15.225-k,0.5-k), (15.225-k,6.77-k), (13.6-k,6.77-k), (13.6-k,7.97-k), (10.3+k,7.97-k), (10.3+k,6.77-k), (8.575+k,6.77-k), (8.575+k,5.97-k), (7-k,5.97-k), (7-k,7-k),
-                    (-7+k,7-k), (-7+k,5.97-k), (-8.575-k,5.97-k), (-8.575-k,6.77-k), (-10.3-k,6.77-k), (-10.3-k,7.97-k), (-13.6+k,7.97-k), (-13.6+k,6.77-k), (-15.225+k,6.77-k), (-15.225+k,0.5-k), (-16.1+k,0.5-k),
-                    (-16.1+k,-2.3+k), (-15.225+k,-2.3+k), (-15.225+k,-5.53+k), (-8.575-k,-5.53+k), (-8.575-k,-4.73+k), (-7+k,-4.73+k), (-7+k,-7+k), (7-k,-7+k)
+                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_1+k), (stab_2+k,-stab_1+k), (stab_2+k,-stab_3+k),
+                    (stab_7-k,-stab_3+k), (stab_7-k,-stab_8+k), (stab_9-k,-stab_8+k), (stab_9-k,stab_10-k),
+                    (stab_7-k,stab_10-k), (stab_7-k,stab_11-k), (stab_6-k,stab_11-k), (stab_6-k,stab_14-k),
+                    (stab_4+k,stab_14-k), (stab_4+k,stab_11-k), (stab_2+k,stab_11-k), (stab_2+k,stab_13-k),
+                    (mx_width-k,stab_13-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_13-k),
+                    (-stab_2-k,stab_13-k), (-stab_2-k,stab_11-k), (-stab_4-k,stab_11-k), (-stab_4-k,stab_14-k),
+                    (-stab_6+k,stab_14-k), (-stab_6+k,stab_11-k), (-stab_7+k,stab_11-k), (-stab_7+k,stab_10-k),
+                    (-stab_9+k,stab_10-k), (-stab_9+k,-stab_8+k), (-stab_7+k,-stab_8+k), (-stab_7+k,-stab_3+k),
+                    (-stab_2-k,-stab_3+k), (-stab_2-k,-stab_1+k), (-mx_width+k,-stab_1+k), (-mx_width+k,-mx_height+k),
+                    (mx_width-k,-mx_height+k)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
@@ -412,8 +561,14 @@ class Plate(object):
                 p = p.polyline(points).cutThruAll()
             if s == 2:
                 # costar stabilizers only
-                points_l = [(-10.3-k,-6.45+k), (-13.6+k,-6.45+k), (-13.6+k,7.75-k), (-10.3-k,7.75-k), (-10.3-k,-6.45+k)]
-                points_r = [(10.3+k,-6.45+k), (13.6-k,-6.45+k), (13.6-k,7.75-k), (10.3+k,7.75-k), (10.3+k,-6.45+k)]
+                points_l = [
+                    (-stab_4-k,-stab_5+k), (-stab_6+k,-stab_5+k), (-stab_6+k,stab_12-k), (-stab_4-k,stab_12-k),
+                    (-stab_4-k,-stab_5+k)
+                ]
+                points_r = [
+                    (stab_4+k,-stab_5+k), (stab_6-k,-stab_5+k), (stab_6-k,stab_12-k), (stab_4+k,stab_12-k),
+                    (stab_4+k,-stab_5+k)
+                ]
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
                     points_r = self.rotate_points(points_r, 90, (0,0))
@@ -424,22 +579,15 @@ class Plate(object):
                 p = p.polyline(points_r).cutThruAll()
             if s in (3, 4):
                 # Alps stabilizers
-                top_y = 4
-                bottom_y = 9
-                inside_x = 16.7 if w == 2.75 else 12.7
-                outside_x = inside_x + 2.7
-
                 points_r = [
-                    (inside_x+k, top_y+k), (outside_x-k, top_y+k),
-                    (outside_x-k, bottom_y-k), (inside_x+k, bottom_y-k),
-                    (inside_x+k, top_y+k)
+                    (alps_stab_inside_x+k, alps_stab_top_y+k), (alps_stab_ouside_x-k, alps_stab_top_y+k),
+                    (alps_stab_ouside_x-k, alps_stab_bottom_y-k), (alps_stab_inside_x+k, alps_stab_bottom_y-k),
+                    (alps_stab_inside_x+k, alps_stab_top_y+k)
                 ]
-                inside_x *= -1
-                outside_x *= -1
                 points_l = [
-                    (inside_x+k, top_y+k), (outside_x-k, top_y+k),
-                    (outside_x-k, bottom_y-k), (inside_x+k, bottom_y-k),
-                    (inside_x+k, top_y+k)
+                    (-alps_stab_inside_x+k, -alps_stab_top_y+k), (-alps_stab_ouside_x-k, -alps_stab_top_y+k),
+                    (-alps_stab_ouside_x-k, -alps_stab_bottom_y-k), (-alps_stab_inside_x+k, -alps_stab_bottom_y-k),
+                    (-alps_stab_inside_x+k, -alps_stab_top_y+k)
                 ]
 
                 if rotate:
@@ -452,7 +600,7 @@ class Plate(object):
                 p = p.polyline(points_r).cutThruAll()
 
         # cut spacebar stabilizer cutout
-        if (w >= 3) or (rotate and h >= 3):
+        elif (w >= 3) or (rotate and h >= 3):
             l = w
             if rotate:
                 l = h
@@ -464,10 +612,18 @@ class Plate(object):
             if s == 0:
                 # modified mx cherry spec stabilizer to support costar
                 points = [
-                    (7-k,-7+k), (7-k,-2.3+k), (x-3.325+k,-2.3+k), (x-3.325+k,-5.53+k), (x-1.65+k,-5.53+k), (x-1.65+k,-6.45+k), (x+1.65-k,-6.45+k), (x+1.65-k,-5.53+k), (x+3.325-k,-5.53+k), (x+3.325-k,-2.3+k), (x+4.2-k,-2.3+k),
-                    (x+4.2-k,0.5-k), (x+3.325-k,0.5-k), (x+3.325-k,6.77-k), (x+1.65-k,6.77-k), (x+1.65-k,7.75-k), (x-1.65+k,7.75-k), (x-1.65+k,6.77-k), (x-3.325+k,6.77-k), (x-3.325+k,2.3-k), (7-k,2.3-k), (7-k,7-k),
-                    (-7+k,7-k), (-7+k,2.3-k), (-x+3.325-k,2.3-k), (-x+3.325-k,6.77-k), (-x+1.65-k,6.77-k), (-x+1.65-k,7.75-k), (-x-1.65+k,7.75-k), (-x-1.65+k,6.77-k), (-x-3.325+k,6.77-k), (-x-3.325+k,0.5-k), (-x-4.2+k,0.5-k),
-                    (-x-4.2+k,-2.3+k), (-x-3.325+k,-2.3+k), (-x-3.325+k,-5.53+k), (-x-1.65+k,-5.53+k), (-x-1.65+k,-6.45+k), (-x+1.65-k,-6.45+k), (-x+1.65-k,-5.53+k), (-x+3.325-k,-5.53+k), (-x+3.325-k,-2.3+k), (-7+k,-2.3+k), (-7+k,-7+k), (7-k,-7+k)
+                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_8+k), (x-stab_15+k,-stab_8+k), (x-stab_15+k,-stab_3+k),
+                    (x-stab_16+k,-stab_3+k), (x-stab_16+k,-stab_5+k), (x+stab_16-k,-stab_5+k), (x+stab_16-k,-stab_3+k),
+                    (x+stab_15-k,-stab_3+k), (x+stab_15-k,-stab_8+k), (x+stab_17-k,-stab_8+k), (x+stab_17-k,stab_10-k),
+                    (x+stab_15-k,stab_10-k), (x+stab_15-k,stab_11-k), (x+stab_16-k,stab_11-k), (x+stab_16-k,stab_12-k),
+                    (x-stab_16+k,stab_12-k), (x-stab_16+k,stab_11-k), (x-stab_15+k,stab_11-k), (x-stab_15+k,stab_8-k),
+                    (mx_width-k,stab_8-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_8-k),
+                    (-x+stab_15-k,stab_8-k), (-x+stab_15-k,stab_11-k), (-x+stab_16-k,stab_11-k), (-x+stab_16-k,stab_12-k),
+                    (-x-stab_16+k,stab_12-k), (-x-stab_16+k,stab_11-k), (-x-stab_15+k,stab_11-k), (-x-stab_15+k,stab_10-k),
+                    (-x-stab_17+k,stab_10-k), (-x-stab_17+k,-stab_8+k), (-x-stab_15+k,-stab_8+k), (-x-stab_15+k,-stab_3+k),
+                    (-x-stab_16+k,-stab_3+k), (-x-stab_16+k,-stab_5+k), (-x+stab_16-k,-stab_5+k), (-x+stab_16-k,-stab_3+k),
+                    (-x+stab_15-k,-stab_3+k), (-x+stab_15-k,-stab_8+k), (-mx_width+k,-stab_8+k), (-mx_width+k,-mx_height+k),
+                    (mx_width-k,-mx_height+k)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
@@ -477,10 +633,17 @@ class Plate(object):
             if s == 1:
                 # cherry spec spacebar stabilizer
                 points = [
-                    (7-k,-7+k), (7-k,-2.3+k), (x-3.325+k,-2.3+k), (x-3.325+k,-5.53+k), (x+3.325-k,-5.53+k), (x+3.325-k,-2.3+k), (x+4.2-k,-2.3+k),
-                    (x+4.2-k,0.5-k), (x+3.325-k,0.5-k), (x+3.325-k,6.77-k), (x+1.65-k,6.77-k), (x+1.65-k,7.97-k), (x-1.65+k,7.97-k), (x-1.65+k,6.77-k), (x-3.325+k,6.77-k), (x-3.325+k,2.3-k), (7-k,2.3-k), (7-k,7-k),
-                    (-7+k,7-k), (-7+k,2.3-k), (-x+3.325-k,2.3-k), (-x+3.325-k,6.77-k), (-x+1.65-k,6.77-k), (-x+1.65-k,7.97-k), (-x-1.65+k,7.97-k), (-x-1.65+k,6.77-k), (-x-3.325+k,6.77-k), (-x-3.325+k,0.5-k), (-x-4.2+k,0.5-k),
-                    (-x-4.2+k,-2.3+k), (-x-3.325+k,-2.3+k), (-x-3.325+k,-5.53+k), (-x+3.325-k,-5.53+k), (-x+3.325-k,-2.3+k), (-7+k,-2.3+k), (-7+k,-7+k), (7-k,-7+k)
+                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_8+k), (x-stab_15+k,-stab_8+k), (x-stab_15+k,-stab_3+k),
+                    (x+stab_15-k,-stab_3+k), (x+stab_15-k,-stab_8+k), (x+stab_17-k,-stab_8+k), (x+stab_17-k,stab_10-k),
+                    (x+stab_15-k,stab_10-k), (x+stab_15-k,stab_11-k), (x+stab_16-k,stab_11-k), (x+stab_16-k,stab_14-k),
+                    (x-stab_16+k,stab_14-k), (x-stab_16+k,stab_11-k), (x-stab_15+k,stab_11-k), (x-stab_15+k,stab_8-k),
+                    (mx_width-k,stab_8-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_8-k),
+                    (-x+stab_15-k,stab_8-k), (-x+stab_15-k,stab_11-k), (-x+stab_16-k,stab_11-k),
+                    (-x+stab_16-k,stab_14-k), (-x-stab_16+k,stab_14-k), (-x-stab_16+k,stab_11-k),
+                    (-x-stab_15+k,stab_11-k), (-x-stab_15+k,stab_10-k), (-x-stab_17+k,stab_10-k),
+                    (-x-stab_17+k,-stab_8+k), (-x-stab_15+k,-stab_8+k), (-x-stab_15+k,-stab_3+k),
+                    (-x+stab_15-k,-stab_3+k), (-x+stab_15-k,-stab_8+k), (-mx_width+k,-stab_8+k),
+                    (-mx_width+k,-mx_height+k), (mx_width-k,-mx_height+k)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
@@ -489,8 +652,14 @@ class Plate(object):
                 p = p.polyline(points).cutThruAll()
             if s in (2, 3):
                 # costar stabilizers only
-                points_l = [(-x+1.65-k,-6.45+k), (-x-1.65+k,-6.45+k), (-x-1.65+k,7.75-k), (-x+1.65-k,7.75-k), (-x+1.65-k,-6.45+k)]
-                points_r = [(x-1.65+k,-6.45+k), (x+1.65-k,-6.45+k), (x+1.65-k,7.75-k), (x-1.65+k,7.75-k), (x-1.65+k,-6.45+k)]
+                points_l = [
+                    (-x+stab_16-k,-stab_5+k), (-x-stab_16+k,-stab_5+k), (-x-stab_16+k,stab_12-k),
+                    (-x+stab_16-k,stab_12-k), (-x+stab_16-k,-stab_5+k)
+                ]
+                points_r = [
+                    (x-stab_16+k,-stab_5+k), (x+stab_16-k,-stab_5+k), (x+stab_16-k,stab_12-k),
+                    (x-stab_16+k,stab_12-k), (x-stab_16+k,-stab_5+k)
+                ]
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
                     points_r = self.rotate_points(points_r, 90, (0,0))
@@ -503,7 +672,6 @@ class Plate(object):
                 # Alps stabilizers only
                 # FIXME: Write this
                 log.error('Vintage alps stabilizers for spacebar not implemented!')
-
 
         self.x_off += c[0]
         return p
@@ -596,7 +764,7 @@ def build(data_hash, data, config):
             if 'mount-holes-size' in data:
                 p.set_poker_holes(float(data['mount-holes-size']))
         if data['case-type']=='sandwich':
-            result['plates'] = result['plates'] + [OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
+            result['plates'] = result['plates'] + [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
             result['has_layers'] = True
             if 'mount-holes-num' in data and 'mount-holes-size' in data:
                 p.set_sandwich_holes(int(data['mount-holes-num']), float(data['mount-holes-size']))
@@ -604,7 +772,6 @@ def build(data_hash, data, config):
         p.set_switch_type(int(data['switch-type']))
     if 'stab-type' in data:
         p.set_stab_type(int(data['stab-type']))
-    # FIXME: You're trying to make the inside hole bigger for the PCB. You just added a bunch of x_pcb_padding and y_pcb_padding vars
     if 'width-padding' in data:
         p.set_x_pad(float(data['width-padding']))
     if 'height-padding' in data:

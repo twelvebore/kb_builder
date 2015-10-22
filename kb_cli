@@ -41,11 +41,11 @@ args = parser.parse_args()
 # Figure out what kind of switch it is
 if args.switch:
     if args.switch == 'mx':
-        args.switch = 1
+        args.switch = 0
     elif args.switch == 'alpsmx':
-        args.switch = 2
+        args.switch = 1
     elif args.switch == 'mx-open':
-        args.switch = 3
+        args.switch = 2
     elif args.switch == 'alps':
         args.switch = 4
     elif args.switch in ('1', '2', '3', '4'):
@@ -137,7 +137,9 @@ if __name__ == '__main__':
         del(data['kerf'])
 
     # Figure out the file name
-    if args.file:
+    if args.name:
+        data_hash = args.name
+    elif args.file:
         data_hash = args.file
     else:
         data_hash = hjson.dumps(data, sort_keys=True)
