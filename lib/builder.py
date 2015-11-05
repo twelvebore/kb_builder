@@ -454,9 +454,9 @@ class Plate(object):
             stab_15 += offset
             stab_16 += offset
             stab_17 += offset
-            alps_stab_top_y += offset
+            alps_stab_top_y -= offset
             alps_stab_bottom_y += offset
-            alps_stab_inside_x += offset
+            alps_stab_inside_x -= offset
             alps_stab_ouside_x += offset
 
         if t == 0: # standard square switch
