@@ -23,12 +23,13 @@ parser.add_argument('-n', '--name', help='Output file basename (Default: generat
 parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, alps')
 parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
-parser.add_argument('--holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
+parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
 parser.add_argument('--hole-diameter', default=4, type=float, help='Case hole size in mm (Default: 4)')
 parser.add_argument('--usb-width', default=10, type=float, help='Default width for the USB connector cutout')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
+parser.add_argument('--hole', default=[], action='append', help='Add a hole at X,Y,Diameter')
 parser.add_argument('--pcb-height', default=0, type=float, help='Amount to pad the height of the cutout to accommodate a pcb (Default: 0)')
 parser.add_argument('--pcb-width', default=0, type=float, help='Amount to pad the width of the cutout to accommodate a pcb (Default: 0)')
 parser.add_argument('--corners', default=0, type=float, help='Radius for corners, 0 to disable (Default: 0)')
@@ -96,6 +97,13 @@ if args.case:
 else:
     args.case = ''
 
+# Add any designated holes
+holes = []
+if args.hole:
+    for hole in args.hole:
+        x, y, diameter = hole.split(',')  # Make sure it's in the right format
+        holes.append((float(x), float(y), float(diameter)))
+
 # MAIN
 if __name__ == '__main__':
     if args.file:
@@ -111,7 +119,7 @@ if __name__ == '__main__':
         'switch_type': args.switch,
         'stab_type': args.stab,
         'case_type': args.case,
-        'mount_holes_num': args.holes,
+        'mount_holes_num': args.case_holes,
         'mount_holes_size': args.hole_diameter,
         'width_padding': args.width,
         'height_padding': args.height,
@@ -146,6 +154,10 @@ if __name__ == '__main__':
 
     if args.kerf == 0:
         del(data['kerf'])
+
+    # Add any holes
+    if holes:
+        data['holes'] = holes
 
     # Figure out the file name
     if args.name:

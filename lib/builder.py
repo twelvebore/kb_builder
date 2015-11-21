@@ -53,13 +53,14 @@ class Plate(object):
     def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0,
                  usb_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1, usb_offset=0,
                  pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
-                 thickness=1.5):
+                 thickness=1.5, holes=None):
         # User settable things
         self.case = {'type': case_type}
         self.corner_type = corner_type
         self.corners = corners
         self.kerf = kerf / 2
         self.keyboard_layout = keyboard_layout
+        self.holes = holes
         self.stab_type = stab_type
         self.switch_type = switch_type
         self.thickness = thickness
@@ -157,6 +158,12 @@ class Plate(object):
             p = p.polyline(points).cutThruAll()
         elif self.corners and self.corner_type != 0:
             log.error('Unknown corner type %s! Disabling corners.', self.corner_type)
+
+        # cut any specified holes
+        for hole in self.holes:
+            x, y, diameter = hole
+            p.center(x, y).circle(diameter/2).cutThruAll()
+            p.center(-x, -y)
 
         # cut the mount holes in the plate
         if self.case['type'] == 'poker':
