@@ -50,23 +50,50 @@ CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 class Plate(object):
-    def __init__(self):
+    def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0,
+                 usb_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1, usb_offset=0,
+                 pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
+                 thickness=1.5):
+        # User settable things
+        self.case = {'type': case_type}
+        self.corner_type = corner_type
+        self.corners = corners
+        self.kerf = kerf / 2
+        self.keyboard_layout = keyboard_layout
+        self.stab_type = stab_type
+        self.switch_type = switch_type
+        self.thickness = thickness
+        self.usb_width = usb_width
+        self.usb_offset = usb_offset
+        self.x_pad = width_padding
+        self.x_pcb_pad = pcb_width_padding / 2
+        self.y_pad = height_padding
+        self.y_pcb_pad = pcb_height_padding / 2
+
+        # Sanity checks
+        if not 0 <= switch_type <= 4:
+            log.error('Unknown switch type %s, defaulting to 0!', switch_type)
+            self.switch_type = 0
+
+        if not 0 <= stab_type <= 4:
+            log.error('Unknown stabilizer type %s, defaulting to 0!', stab_type)
+            self.stab_type = 0
+
+        # Plate state info
         self.UOM = "mm"
-        self.width = 0
-        self.height = 0
-        self.thickness = 1.5
-        self.fillet = 0
-        self.kerf = 0.0
-        self.x_pad = 0
-        self.y_pad = 0
-        self.x_pcb_pad = 0
-        self.y_pcb_pad = 0
-        self.x_off = 0
+        self.exports = {}
+        self.formats = cfg['app']['formats'][:]  # Use a copy in case we remove SVG later
         self.grow_y = 0
         self.grow_x = 0
+        self.height = 0
+        self.layers = [SWITCH_LAYER]
+        self.layout = []
+        self.origin = (0,0)
+        self.width = 0
+        self.x_off = 0
+
+        # Constants
         self.u1 = 19.05
-        self.switch_type = 1
-        self.stab_type = 0
         self.stabs = {
             "300":19.05, # 3 unit
             "400":28.575, # 4 unit
@@ -79,63 +106,57 @@ class Plate(object):
             "900":66.675, # 9 unit
             "1000":66.675 # 10 unit
         }
-        self.layout = []
-        self.case = {'type':None}
-        self.origin = (0,0)
-        self.usb_width = 10
-        self.usb_offset = 0
 
+        # Initialize the case
+        if self.case['type'] == 'poker':
+            if mount_holes_size > 0:
+                self.case = {'type': 'poker', 'hole_diameter': mount_holes_size}
+        if self.case['type'] == 'sandwich':
+            self.layers += [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
+            if mount_holes_num > 0 and mount_holes_size > 0:
+                self.case = {'type': 'sandwich', 'holes': mount_holes_num, 'hole_diameter': mount_holes_size, 'x_holes':0, 'y_holes':0}
+        elif self.case['type']:
+            log.error('Unknown case type: %s, skipping case generation', self.case['type'])
 
-    def set_x_pad(self, x):
-        self.x_pad = x
-
-    def set_y_pad(self, y):
-        self.y_pad = y
-
-    def set_x_pcb_pad(self, x):
-        self.x_pcb_pad = x/2
-
-    def set_y_pcb_pad(self, y):
-        self.y_pcb_pad = y/2
-
-    def set_usb_width(self, w):
-        self.usb_width = w
-
-    def set_usb_offset(self, o):
-        self.usb_offset = o
-
-    def set_thickness(self, t):
-        self.thickness = t
-
-    def set_fillet(self, f):
-        self.fillet = f
-
-    def set_kerf(self, k):
-        self.kerf = k/2
-
-    def set_switch_type(self, t):
-        if t in range(5):
-            log.info('Setting switch-type to %s', t)
-            self.switch_type = t
-
-    def set_stab_type(self, s):
-        if s in range(5):
-            log.info('Setting stab-type to %s', s)
-            self.stab_type = s
-
-    def set_poker_holes(self, d):
-        self.case = {'type':'poker', 'hole_diameter':d}
-
-    def set_sandwich_holes(self, h, d):
-        self.case = {'type':'sandwich', 'holes':h, 'x_holes':0, 'y_holes':0, 'hole_diameter':d}
-
+        # If we don't want SVG remove it from the available formats
+        if not export_svg:
+            self.formats.remove('svg')
 
     # this is the main draw function for the class and handles the logical flow and orchestration
-    def draw(self, result, layout, data_hash, config):
-        self.parse_layout(layout)
+    def draw(self, result, data_hash, config):
+        self.parse_layout()
         p = self.init_plate()
         result['width'] = self.width
         result['height'] = self.height
+
+        # Cut the beveled corners if applicable
+        if self.corners > 0 and self.corner_type == 1:
+            # Lower right corner
+            points = (
+                (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
+                (self.horizontal_edge - self.corners, self.vertical_edge), (self.horizontal_edge, self.vertical_edge - self.corners),
+            )
+            p = p.polyline(points).cutThruAll()
+            # Lower left corner
+            points = (
+                (-self.horizontal_edge, self.vertical_edge - self.corners), (-self.horizontal_edge, self.vertical_edge),
+                (-self.horizontal_edge + self.corners, self.vertical_edge), (-self.horizontal_edge, self.vertical_edge - self.corners),
+            )
+            p = p.polyline(points).cutThruAll()
+            # Upper right corner
+            points = (
+                (self.horizontal_edge, -self.vertical_edge + self.corners), (self.horizontal_edge, -self.vertical_edge),
+                (self.horizontal_edge - self.corners, -self.vertical_edge), (self.horizontal_edge, -self.vertical_edge + self.corners),
+            )
+            p = p.polyline(points).cutThruAll()
+            # Upper left corner
+            points = (
+                (-self.horizontal_edge, -self.vertical_edge + self.corners), (-self.horizontal_edge, -self.vertical_edge),
+                (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
+            )
+            p = p.polyline(points).cutThruAll()
+        elif self.corners and self.corner_type != 0:
+            log.error('Unknown corner type %s! Disabling corners.', self.corner_type)
 
         # cut the mount holes in the plate
         if self.case['type'] == 'poker':
@@ -222,7 +243,6 @@ class Plate(object):
                             (horizontal-self.kerf, -vertical+self.kerf), (-horizontal+self.kerf, -vertical+self.kerf),
                             (-horizontal+self.kerf, vertical-self.kerf)
                         ]
-                        print 'TOP_LAYER', points
 
                         if 'h' in key and key['h'] > key['w']:
                             points = self.rotate_points(points, 90, (0,0))
@@ -264,11 +284,11 @@ class Plate(object):
 
 
     # parse the supplied layout to determine size and populate the properties of each 'key'
-    def parse_layout(self, layout):
+    def parse_layout(self):
         layout_width = 0
         layout_height = 0
         key_desc = False # track if current is not a key and only describes the next key
-        for row in layout:
+        for row in self.keyboard_layout:
             if isinstance(row, list): # only handle arrays of keys
                 row_width = 0
                 row_height = 0
@@ -307,13 +327,17 @@ class Plate(object):
                     self.grow_x = row['grow_x']/2
         self.width = layout_width*self.u1 + 2*(self.x_pad+self.x_pcb_pad) + 2*self.kerf
         self.height = layout_height + 2*(self.y_pad+self.y_pcb_pad) + 2*self.kerf
+        self.horizontal_edge = self.width / 2
+        self.vertical_edge = self.height / 2
 
 
     # initialize the plate object 'p' and get it ready to work with
     def init_plate(self):
         p = cadquery.Workplane("front").box(self.width, self.height, self.thickness)
-        if self.fillet > 0:
-            p = p.edges("|Z").fillet(self.fillet)
+
+        if self.corners > 0 and self.corner_type == 0:
+            p = p.edges("|Z").fillet(self.corners)
+
         return p.faces("<Z").workplane()
 
 
@@ -381,7 +405,7 @@ class Plate(object):
         w = key['w'] if 'w' in key else 1
         h = key['h'] if 'h' in key else 1
         t = key['_t'] if '_t' in key and key['_t'] in range(4) else self.switch_type
-        s = key['_s'] if '_s' in key and key['_s'] in range(2) else self.stab_type
+        s = key['_s'] if '_s' in key and key['_s'] in range(4) else self.stab_type
         k = key['_k']/2 if '_k' in key else self.kerf
         r = key['_r'] if '_r' in key else None
         rs = key['_rs'] if '_rs' in key else None
@@ -540,7 +564,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            if s == 1:
+            elif s == 1:
                 # cherry spec 2u stabilizer
                 points = [
                     (mx_width-k,-mx_height+k), (mx_width-k,-stab_1+k), (stab_2+k,-stab_1+k), (stab_2+k,-stab_3+k),
@@ -559,7 +583,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            if s == 2:
+            elif s == 2:
                 # costar stabilizers only
                 points_l = [
                     (-stab_4-k,-stab_5+k), (-stab_6+k,-stab_5+k), (-stab_6+k,stab_12-k), (-stab_4-k,stab_12-k),
@@ -577,7 +601,7 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
-            if s in (3, 4):
+            elif s in (3, 4):
                 # Alps stabilizers
                 points_r = [
                     (alps_stab_inside_x+k, alps_stab_top_y+k), (alps_stab_ouside_x-k, alps_stab_top_y+k),
@@ -598,6 +622,8 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
+            else:
+                log.error('Unknown stab type %s! No stabilizer cut', s)
 
         # cut spacebar stabilizer cutout
         elif (w >= 3) or (rotate and h >= 3):
@@ -630,7 +656,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            if s == 1:
+            elif s == 1:
                 # cherry spec spacebar stabilizer
                 points = [
                     (mx_width-k,-mx_height+k), (mx_width-k,-stab_8+k), (x-stab_15+k,-stab_8+k), (x-stab_15+k,-stab_3+k),
@@ -650,7 +676,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            if s in (2, 3):
+            elif s in (2, 3):
                 # costar stabilizers only
                 points_l = [
                     (-x+stab_16-k,-stab_5+k), (-x-stab_16+k,-stab_5+k), (-x-stab_16+k,stab_12-k),
@@ -668,10 +694,12 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
-            if s == 4:
+            elif s == 4:
                 # Alps stabilizers only
                 # FIXME: Write this
                 log.error('Vintage alps stabilizers for spacebar not implemented!')
+            else:
+                log.error('Unknown stab type %s! No stabilizer cut', s)
 
         self.x_off += c[0]
         return p
@@ -698,7 +726,7 @@ class Plate(object):
         settings['height_padding'] = self.y_pad
         settings['pcb_width_padding'] = self.x_pcb_pad
         settings['pcb_height_padding'] = self.y_pcb_pad
-        settings['plate_corners'] = self.fillet
+        settings['plate_corners'] = self.corners
         settings['kerf'] = self.kerf
         # XXX line colour?
 
@@ -753,46 +781,14 @@ class Plate(object):
 # take the input from the webserver and instantiate and draw the plate
 def build(data_hash, data, config):
     # create the result object
-    result = {}
-    result['has_layers'] = False
-    result['plates'] = [SWITCH_LAYER]
-    result['formats'] = cfg['app']['formats'][:]  # Have to use a copy in case we remove SVG later
-    result['exports'] = {}
-    p = Plate()
-    if 'case-type' in data:
-        if data['case-type']=='poker':
-            if 'mount-holes-size' in data:
-                p.set_poker_holes(float(data['mount-holes-size']))
-        if data['case-type']=='sandwich':
-            result['plates'] = result['plates'] + [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
-            result['has_layers'] = True
-            if 'mount-holes-num' in data and 'mount-holes-size' in data:
-                p.set_sandwich_holes(int(data['mount-holes-num']), float(data['mount-holes-size']))
-    if 'switch-type' in data:
-        p.set_switch_type(int(data['switch-type']))
-    if 'stab-type' in data:
-        p.set_stab_type(int(data['stab-type']))
-    if 'width-padding' in data:
-        p.set_x_pad(float(data['width-padding']))
-    if 'height-padding' in data:
-        p.set_y_pad(float(data['height-padding']))
-    if 'pcb-width-padding' in data:
-        p.set_x_pcb_pad(float(data['pcb-width-padding']))
-    if 'pcb-height-padding' in data:
-        p.set_y_pcb_pad(float(data['pcb-height-padding']))
-    if 'fillet' in data:
-        p.set_fillet(float(data['fillet']))
-    if 'thickness' in data:
-        p.set_thickness(float(data['thickness']))
-    if 'kerf' in data:
-        p.set_kerf(float(data['kerf']))
-    if 'usb_offset' in data:
-        p.set_usb_offset(float(data['usb_offset']))
-    if 'usb_width' in data:
-        p.set_usb_width(float(data['usb_width']))
-    if 'export_svg' in data and not data['export_svg']:
-        result['formats'].remove('svg')
-    result = p.draw(result, data['layout'], data_hash, config) # draw the plate
+    p = Plate(**data)
+    result = {
+        'has_layers': len(p.layers) > 1,
+        'plates': p.layers,
+        'formats': p.formats,
+        'exports': p.exports
+    }
+    result = p.draw(result, data_hash, config) # draw the plate
     log.info("Finished drawing: %s" % (data_hash))
     return result # return the metadata result to the webserver
 
