@@ -60,7 +60,7 @@ class Plate(object):
         self.corners = corners
         self.kerf = kerf / 2
         self.keyboard_layout = keyboard_layout
-        self.holes = holes
+        self.holes = holes if holes else []
         self.stab_type = stab_type
         self.switch_type = switch_type
         self.thickness = thickness
@@ -131,32 +131,34 @@ class Plate(object):
         result['height'] = self.height
 
         # Cut the beveled corners if applicable
-        if self.corners > 0 and self.corner_type == 1:
+        if self.corners > 0 and self.corner_type == 0:
+            pass  # Rounded corners are handled in self.init_plate()
+        elif self.corners > 0 and self.corner_type == 1:
             # Lower right corner
             points = (
                 (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
                 (self.horizontal_edge - self.corners, self.vertical_edge), (self.horizontal_edge, self.vertical_edge - self.corners),
             )
-            p = p.polyline(points).cutThruAll()
+            p.polyline(points).cutThruAll()
             # Lower left corner
             points = (
                 (-self.horizontal_edge, self.vertical_edge - self.corners), (-self.horizontal_edge, self.vertical_edge),
                 (-self.horizontal_edge + self.corners, self.vertical_edge), (-self.horizontal_edge, self.vertical_edge - self.corners),
             )
-            p = p.polyline(points).cutThruAll()
+            p.polyline(points).cutThruAll()
             # Upper right corner
             points = (
                 (self.horizontal_edge, -self.vertical_edge + self.corners), (self.horizontal_edge, -self.vertical_edge),
                 (self.horizontal_edge - self.corners, -self.vertical_edge), (self.horizontal_edge, -self.vertical_edge + self.corners),
             )
-            p = p.polyline(points).cutThruAll()
+            p.polyline(points).cutThruAll()
             # Upper left corner
             points = (
                 (-self.horizontal_edge, -self.vertical_edge + self.corners), (-self.horizontal_edge, -self.vertical_edge),
                 (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
             )
-            p = p.polyline(points).cutThruAll()
-        elif self.corners and self.corner_type != 0:
+            p.polyline(points).cutThruAll()
+        else:
             log.error('Unknown corner type %s! Disabling corners.', self.corner_type)
 
         # cut any specified holes
@@ -171,31 +173,31 @@ class Plate(object):
             rect_points = [(140.75,9.2), (-140.75,9.2)] # edge slots
             rect_size = (3.5, 5) # edge slot cutout to edge
             for c in hole_points:
-                p = self.cut_hole(p, c, self.case['hole_diameter']).center(-c[0],-c[1])
+                self.cut_hole(p, c, self.case['hole_diameter']).center(-c[0],-c[1])
             for c in rect_points:
-                p = self.cut_rect(p, c, rect_size[0], rect_size[1]).center(-c[0],-c[1])
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+                self.cut_rect(p, c, rect_size[0], rect_size[1]).center(-c[0],-c[1])
+            self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
         elif self.case['type'] == 'sandwich':
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+            self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
             if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
                 self.layout_sandwich_holes()
                 radius = self.case['hole_diameter']/2 - self.kerf
-                x_gap = (self.width - self.x_pad - 2*self.kerf)/(self.case['x_holes'] + 1)
-                y_gap = (self.height - self.y_pad - 2*self.kerf)/(self.case['y_holes'] + 1)
-                p = p.center(self.x_pad/2, self.y_pad/2)
+                x_gap = (self.width - 2*self.case['hole_diameter'] - 2*self.kerf - 2)/(self.case['x_holes'] + 1)
+                y_gap = (self.height - 2*self.case['hole_diameter'] - 2*self.kerf - 2)/(self.case['y_holes'] + 1)
+                p.center(self.case['hole_diameter']+1, self.case['hole_diameter']+1)
                 for i in range(self.case['x_holes'] + 1):
-                    p = p.center(x_gap,0).circle(radius).cutThruAll()
+                    p.center(x_gap,0).circle(radius).cutThruAll()
                 for i in range(self.case['y_holes'] + 1):
-                    p = p.center(0,y_gap).circle(radius).cutThruAll()
+                    p.center(0,y_gap).circle(radius).cutThruAll()
                 for i in range(self.case['x_holes'] + 1):
-                    p = p.center(-x_gap,0).circle(radius).cutThruAll()
+                    p.center(-x_gap,0).circle(radius).cutThruAll()
                 for i in range(self.case['y_holes'] + 1):
-                    p = p.center(0,-y_gap).circle(radius).cutThruAll()
+                    p = p.center(0,-y_gap).circle(radius).cutThruAll()  # FIXME: Figure out why this one needs p =
                 if result['has_layers']:
                     self.export(p, result, BOTTOM_LAYER, data_hash, config)
-                p = p.center(-self.x_pad/2, -self.y_pad/2)
+                p.center(-self.case['hole_diameter']-1, -self.case['hole_diameter']-1)
         elif not self.case['type']:
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+            self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
         else:
             log.error('Unknown case type: %s', self.case['type'])
 
@@ -208,8 +210,8 @@ class Plate(object):
             prev_y_off = 0
 
             if layer != SWITCH_LAYER:
-                p = self.center(p, -self.origin[0], -self.origin[1]) # move to the center of the plate
-                p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+                self.center(p, -self.origin[0], -self.origin[1]) # move to the center of the plate
+                self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
 
             for r, row in enumerate(self.layout):
                 for k, key in enumerate(row):
@@ -222,13 +224,13 @@ class Plate(object):
                         y = key['y']*self.u1
 
                     if r == 0 and k == 0: # handle placement of the first key in first row
-                        p = self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
+                        self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
                         x += (self.x_pad+self.x_pcb_pad)
                         y += (self.y_pad+self.y_pcb_pad)
                         # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
                         self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
                     elif k == 0: # handle changing rows
-                        p = self.center(p, -self.x_off, self.u1) # move to the next row
+                        self.center(p, -self.x_off, self.u1) # move to the next row
                         self.x_off = 0 # reset back to the left side of the plate
                         x += self.u1/2 + key['w']*self.u1/2
                     else: # handle all other keys
@@ -256,10 +258,10 @@ class Plate(object):
                         if '_r' in key:
                             points = self.rotate_points(points, r, (0,0))
 
-                        p = p.polyline(points).cutThruAll()
+                        p.polyline(points).cutThruAll()
 
                     else:
-                        p = self.cut_switch(p, (x, y), key, layer)
+                        self.cut_switch(p, (x, y), key, layer)
 
                     prev_width = key['w']
 
@@ -268,24 +270,24 @@ class Plate(object):
         # cut layers
         if result['has_layers']:
             # closed layer
-            p = p.center(-self.origin[0], -self.origin[1])  # move to the center of the plate
+            p.center(-self.origin[0], -self.origin[1])  # move to the center of the plate
             points = [
                 (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2), (self.width/2-self.x_pad-self.kerf*2,-self.height/2+self.y_pad+self.kerf*2),
                 (self.width/2-self.x_pad-self.kerf*2,self.height/2-self.y_pad-self.kerf*2), (-self.width/2+self.x_pad+self.kerf*2,self.height/2-self.y_pad-self.kerf*2),
                 (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2)
             ]
-            p = p.polyline(points).cutThruAll()
+            p.polyline(points).cutThruAll()
             self.export(p, result, CLOSED_LAYER, data_hash, config)
 
             # open layer
-            p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
+            p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
 
             points = [
                 (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf), (self.usb_width/2+self.usb_offset-self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
                 (self.usb_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf), (-self.usb_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
                 (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf)
             ]
-            p = p.polyline(points).cutThruAll()
+            p.polyline(points).cutThruAll()
             self.export(p, result, OPEN_LAYER, data_hash, config)
         return result
 
@@ -343,7 +345,7 @@ class Plate(object):
         p = cadquery.Workplane("front").box(self.width, self.height, self.thickness)
 
         if self.corners > 0 and self.corner_type == 0:
-            p = p.edges("|Z").fillet(self.corners)
+            p.edges("|Z").fillet(self.corners)
 
         return p.faces("<Z").workplane()
 
@@ -353,8 +355,9 @@ class Plate(object):
         if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
             holes = int(self.case['holes'])
             if holes % 2 == 0 and holes >= 4: # holes needs to be even and the first 4 are put in the corners
-                x = self.width - self.x_pad - self.kerf # x length to split
-                y = self.height - self.y_pad - self.kerf # y length to split
+                x = self.width - self.kerf # x length to split
+                y = self.height - self.kerf # y length to split
+                print "splitting holes on %s,%s" % (x, y)
                 _x = 0 # number of holes on each x side (not counting the corner holes)
                 _y = 0 # number of holes on each y side (not counting the corner holes)
                 free = (holes-4)/2 # number of free holes to be placed on either x or y sides
@@ -384,13 +387,13 @@ class Plate(object):
 
     # cut a hole with center 'c' and diameter 'd'
     def cut_hole(self, p, c, d):
-        p = self.center(p, c[0], c[1]).hole(d)
+        self.center(p, c[0], c[1]).hole(d)
         return p
 
 
     # cut a rectangle with center 'c' with a width 'w' and heigh 'h'
     def cut_rect(self, p, c, w, h):
-        p = self.center(p, c[0], c[1]).rect(w, h)
+        self.center(p, c[0], c[1]).rect(w, h)
         return p
 
 
@@ -542,7 +545,7 @@ class Plate(object):
             points = self.rotate_points(points, 90, (0,0))
         if r:
             points = self.rotate_points(points, r, (0,0))
-        p = self.center(p, c[0] ,c[1]).polyline(points).cutThruAll()
+        self.center(p, c[0] ,c[1]).polyline(points).cutThruAll()
 
         # cut 2 unit stabilizer cutout
         if layer == TOP_LAYER:
@@ -570,7 +573,7 @@ class Plate(object):
                     points = self.rotate_points(points, 90, (0,0))
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                p.polyline(points).cutThruAll()
             elif s == 1:
                 # cherry spec 2u stabilizer
                 points = [
@@ -589,7 +592,7 @@ class Plate(object):
                     points = self.rotate_points(points, 90, (0,0))
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                p.polyline(points).cutThruAll()
             elif s == 2:
                 # costar stabilizers only
                 points_l = [
@@ -606,8 +609,8 @@ class Plate(object):
                 if rs:
                     points_l = self.rotate_points(points_l, rs, (0,0))
                     points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                p.polyline(points_l).cutThruAll()
+                p.polyline(points_r).cutThruAll()
             elif s in (3, 4):
                 # Alps stabilizers
                 points_r = [
@@ -627,8 +630,8 @@ class Plate(object):
                 if rs:
                     points_l = self.rotate_points(points_l, rs, (0,0))
                     points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                p.polyline(points_l).cutThruAll()
+                p.polyline(points_r).cutThruAll()
             else:
                 log.error('Unknown stab type %s! No stabilizer cut', s)
 
@@ -662,7 +665,7 @@ class Plate(object):
                     points = self.rotate_points(points, 90, (0,0))
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                p.polyline(points).cutThruAll()
             elif s == 1:
                 # cherry spec spacebar stabilizer
                 points = [
@@ -682,7 +685,7 @@ class Plate(object):
                     points = self.rotate_points(points, 90, (0,0))
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                p.polyline(points).cutThruAll()
             elif s in (2, 3):
                 # costar stabilizers only
                 points_l = [
@@ -699,8 +702,8 @@ class Plate(object):
                 if rs:
                     points_l = self.rotate_points(points_l, rs, (0,0))
                     points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                p.polyline(points_l).cutThruAll()
+                p.polyline(points_r).cutThruAll()
             elif s == 4:
                 # Alps stabilizers only
                 # FIXME: Write this
