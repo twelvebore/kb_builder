@@ -53,7 +53,7 @@ class Plate(object):
     def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0,
                  usb_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1, usb_offset=0,
                  pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
-                 thickness=1.5, holes=None):
+                 thickness=1.5, holes=None, reinforcing=False):
         # User settable things
         self.case = {'type': case_type}
         self.corner_type = corner_type
@@ -112,12 +112,15 @@ class Plate(object):
         if self.case['type'] == 'poker':
             if mount_holes_size > 0:
                 self.case = {'type': 'poker', 'hole_diameter': mount_holes_size}
-        if self.case['type'] == 'sandwich':
+        elif self.case['type'] == 'sandwich':
             self.layers += [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
             if mount_holes_num > 0 and mount_holes_size > 0:
                 self.case = {'type': 'sandwich', 'holes': mount_holes_num, 'hole_diameter': mount_holes_size, 'x_holes':0, 'y_holes':0}
         elif self.case['type']:
             log.error('Unknown case type: %s, skipping case generation', self.case['type'])
+
+        if reinforcing:
+            self.layers += [REINFORCING_LAYER]
 
         # If we don't want SVG remove it from the available formats
         if not export_svg:
@@ -170,12 +173,13 @@ class Plate(object):
         # cut the mount holes in the plate
         if self.case['type'] == 'poker':
             hole_points = [(-139,9.2), (-117.3,-19.4), (-14.3,0), (48,37.9), (117.55,-19.4), (139,9.2)] # holes
-            rect_points = [(140.75,9.2), (-140.75,9.2)] # edge slots
+            rect_center = (self.width/2) - (3.5/2)
+            rect_points = [(rect_center,9.2), (-rect_center,9.2)] # edge slots
             rect_size = (3.5, 5) # edge slot cutout to edge
             for c in hole_points:
-                p = self.cut_hole(p, c, self.case['hole_diameter']).center(-c[0],-c[1])
+                p = p.center(c[0], c[1]).hole(self.case['hole_diameter']).center(-c[0],-c[1])
             for c in rect_points:
-                p = self.cut_rect(p, c, rect_size[0], rect_size[1]).center(-c[0],-c[1])
+                p = p.center(c[0], c[1]).rect(rect_size[0], rect_size[1]).center(-c[0],-c[1])
             p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
         elif self.case['type'] == 'sandwich':
             p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
@@ -196,14 +200,14 @@ class Plate(object):
                 if result['has_layers']:
                     self.export(p, result, BOTTOM_LAYER, data_hash, config)
                 p = p.center(-self.case['hole_diameter']+.5, -self.case['hole_diameter']+.5)
-        elif not self.case['type']:
+        elif not self.case['type'] or self.case['type'] == 'reinforcing':
             p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
         else:
             log.error('Unknown case type: %s', self.case['type'])
 
         # cut all the switch and stabilizer openings...
         for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
-            if layer != SWITCH_LAYER and not result['has_layers']:
+            if layer not in self.layers:
                 break
 
             prev_width = None
@@ -244,22 +248,6 @@ class Plate(object):
                         prev_y_off = key['h']*self.u1/2 - self.u1/2
                         y += prev_y_off
 
-                    if False and layer == TOP_LAYER:
-                        horizontal = 17 * key['w']
-                        vertical = 17 * key['h']
-                        points = [
-                            (-horizontal+self.kerf, vertical-self.kerf), (horizontal-self.kerf, vertical-self.kerf),
-                            (horizontal-self.kerf, -vertical+self.kerf), (-horizontal+self.kerf, -vertical+self.kerf),
-                            (-horizontal+self.kerf, vertical-self.kerf)
-                        ]
-
-                        if 'h' in key and key['h'] > key['w']:
-                            points = self.rotate_points(points, 90, (0,0))
-                        if '_r' in key:
-                            points = self.rotate_points(points, r, (0,0))
-
-                        p = p.polyline(points).cutThruAll()
-
                     else:
                         p = self.cut_switch(p, (x, y), key, layer)
 
@@ -268,8 +256,7 @@ class Plate(object):
             self.export(p, result, layer, data_hash, config)
 
         # cut layers
-        if result['has_layers']:
-            # closed layer
+        if CLOSED_LAYER in self.layers:
             p = p.center(-self.origin[0], -self.origin[1])  # move to the center of the plate
             points = [
                 (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2), (self.width/2-self.x_pad-self.kerf*2,-self.height/2+self.y_pad+self.kerf*2),
@@ -279,7 +266,7 @@ class Plate(object):
             p = p.polyline(points).cutThruAll()
             self.export(p, result, CLOSED_LAYER, data_hash, config)
 
-            # open layer
+        if OPEN_LAYER in self.layers:
             p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
 
             points = [
@@ -386,13 +373,13 @@ class Plate(object):
 
     # cut a hole with center 'c' and diameter 'd'
     def cut_hole(self, p, c, d):
-        p = self.center(p, c[0], c[1]).hole(d)
+        p = p.center(p, c[0], c[1]).hole(d)
         return p
 
 
     # cut a rectangle with center 'c' with a width 'w' and heigh 'h'
     def cut_rect(self, p, c, w, h):
-        p = self.center(p, c[0], c[1]).rect(w, h)
+        p = p.center(p, c[0], c[1]).rect(w, h)
         return p
 
 
@@ -460,10 +447,10 @@ class Plate(object):
             # Cut out openings the size of keycaps
             t = 0
             s = 1
-            mx_width = (self.u1/2) * w
-            mx_height = self.u1/2
+            mx_width = (self.u1/2+0.5) * w
+            mx_height = self.u1/2+0.5
         elif layer is REINFORCING_LAYER:
-            offset = 1
+            offset = 1.25
             mx_height += offset
             mx_width += offset
             alps_height += offset

@@ -27,6 +27,7 @@ parser.add_argument('--case-holes', default=8, type=int, help='Number of holes i
 parser.add_argument('--hole-diameter', default=4, type=float, help='Case hole size in mm (Default: 4)')
 parser.add_argument('--usb-width', default=10, type=float, help='Default width for the USB connector cutout')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
+parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
 parser.add_argument('--hole', default=[], action='append', help='Add a hole at X,Y,Diameter')
@@ -94,8 +95,6 @@ if args.case:
     elif args.case not in ('none', 'poker', 'sandwich'):
         logging.error('Unknown case type: %s', args.case)
         exit(1)
-else:
-    args.case = ''
 
 # Add any designated holes
 holes = []
@@ -129,6 +128,7 @@ if __name__ == '__main__':
         'corner_type': args.corner_type,
         'thickness': args.thickness,
         'kerf': args.kerf,
+        'reinforcing': args.reinforcing,
         'usb_width': args.usb_width,
         'usb_offset': args.usb_offset,
         'export_svg': args.svg,
