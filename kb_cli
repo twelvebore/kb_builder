@@ -24,7 +24,7 @@ parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, alps'
 parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
 parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
-parser.add_argument('--hole-diameter', default=4, type=float, help='Case hole size in mm (Default: 4)')
+parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
 parser.add_argument('--usb-width', default=10, type=float, help='Default width for the USB connector cutout')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
