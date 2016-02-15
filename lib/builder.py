@@ -249,9 +249,8 @@ class Plate(object):
                         prev_y_off = key['h']*self.u1/2 - self.u1/2
                         y += prev_y_off
 
-                    else:
-                        p = self.cut_switch(p, (x, y), key, layer)
-
+                    # Cut the switch hole
+                    p = self.cut_switch(p, (x, y), key, layer)
                     prev_width = key['w']
 
             self.export(p, result, layer, data_hash, config)
@@ -410,14 +409,15 @@ class Plate(object):
         wing_inside = 2.9
         wing_outside = 6
         # FIXME: Use more descriptive names here
-        stab_1 = 4.73
-        stab_2 = 8.575
+        mx_stab_inside_y = 4.73
+        mx_stab_inside_x = 8.575
         stab_cherry_top_x = 5.53
         stab_4 = 10.3
         stab_5 = 6.45
         stab_6 = 13.6
-        stab_7 = 15.225
+        mx_stab_outside_x = 15.225
         stab_y_wire = 2.3
+        stab_bottom_y_wire = stab_y_wire
         stab_9 = 16.1
         stab_cherry_wing_bottom_x = 0.5
         stab_cherry_bottom_x = 6.77
@@ -439,27 +439,23 @@ class Plate(object):
             mx_width = (self.u1/2+0.5) * w
             mx_height = self.u1/2+0.5
         elif layer is REINFORCING_LAYER:
-            offset = 1.25
+            offset = 1
             mx_height += offset
             mx_width += offset
             alps_height += offset
             alps_width += offset
             wing_inside += offset
             wing_outside += offset
-            stab_1 += offset
-            stab_2 += offset
-            stab_cherry_top_x += offset
+            mx_stab_inside_x += offset
+            stab_cherry_top_x += 2.5 if offset < 2.5 else offset
+            stab_y_wire = mx_stab_inside_y = stab_cherry_top_x
             stab_4 += offset
             stab_5 += offset
             stab_6 += offset
-            stab_7 += offset
-            stab_y_wire += offset
+            mx_stab_outside_x += offset
             stab_9 += offset
-            stab_cherry_wing_bottom_x += offset
-            stab_cherry_bottom_x += offset
-            stab_12 += offset
-            stab_13 += offset
-            stab_cherry_bottom_wing_bottom_y += offset
+            stab_cherry_bottom_x += 4.28 if offset < 4.28 else offset
+            stab_cherry_wing_bottom_x = stab_bottom_y_wire = stab_cherry_bottom_wing_bottom_y = stab_13 = stab_12 = stab_cherry_bottom_x
             stab_cherry_half_width += offset
             stab_cherry_bottom_wing_half_width += offset
             stab_cherry_outside_x += offset
@@ -525,7 +521,8 @@ class Plate(object):
             points = [
                 (alps_width-k,-alps_height+k),
                 (alps_width-k,alps_height-k),
-                (-alps_width+k,alps_height-k), (-alps_width+k,-alps_height+k),
+                (-alps_width+k,alps_height-k),
+                (-alps_width+k,-alps_height+k),
                 (alps_width-k,-alps_height+k),
             ]
 
@@ -548,18 +545,53 @@ class Plate(object):
         elif (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
             if s == 0:
                 # modified mx cherry spec 2u stabilizer to support costar
+                print '2u stab points:'
+                print '\n'.join(map(str, points))
                 points = [
-                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_1+k), (stab_2+k,-stab_1+k), (stab_2+k,-stab_cherry_top_x+k),
-                    (stab_4+k,-stab_cherry_top_x+k), (stab_4+k,-stab_5+k), (stab_6-k,-stab_5+k), (stab_6-k,-stab_cherry_top_x+k),
-                    (stab_7-k,-stab_cherry_top_x+k), (stab_7-k,-stab_y_wire+k), (stab_9-k,-stab_y_wire+k), (stab_9-k,stab_cherry_wing_bottom_x-k),
-                    (stab_7-k,stab_cherry_wing_bottom_x-k), (stab_7-k,stab_cherry_bottom_x-k), (stab_6-k,stab_cherry_bottom_x-k), (stab_6-k,stab_12-k),
-                    (stab_4+k,stab_12-k), (stab_4+k,stab_cherry_bottom_x-k), (stab_2+k,stab_cherry_bottom_x-k), (stab_2+k,stab_13-k),
-                    (mx_width-k,stab_13-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_13-k),
-                    (-stab_2-k,stab_13-k), (-stab_2-k,stab_cherry_bottom_x-k), (-stab_4-k,stab_cherry_bottom_x-k), (-stab_4-k,stab_12-k),
-                    (-stab_6+k,stab_12-k), (-stab_6+k,stab_cherry_bottom_x-k), (-stab_7+k,stab_cherry_bottom_x-k), (-stab_7+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,stab_cherry_wing_bottom_x-k), (-stab_9+k,-stab_y_wire+k), (-stab_7+k,-stab_y_wire+k), (-stab_7+k,-stab_cherry_top_x+k),
-                    (-stab_6+k,-stab_cherry_top_x+k), (-stab_6+k,-stab_5+k), (-stab_4-k,-stab_5+k), (-stab_4-k,-stab_cherry_top_x+k),
-                    (-stab_2-k,-stab_cherry_top_x+k), (-stab_2-k,-stab_1+k), (-mx_width+k,-stab_1+k), (-mx_width+k,-mx_height+k),
+                    (mx_width-k,-mx_height+k),
+                    (mx_width-k,-mx_stab_inside_y+k),
+                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
+                    (mx_stab_inside_x+k,-stab_cherry_top_x+k),
+                    (stab_4+k,-stab_cherry_top_x+k),
+                    (stab_4+k,-stab_5+k),
+                    (stab_6-k,-stab_5+k),
+                    (stab_6-k,-stab_cherry_top_x+k),
+                    (mx_stab_outside_x-k,-stab_cherry_top_x+k),
+                    (mx_stab_outside_x-k,-stab_y_wire+k),
+                    (stab_9-k,-stab_y_wire+k),
+                    (stab_9-k,stab_cherry_wing_bottom_x-k),
+                    (mx_stab_outside_x-k,stab_cherry_wing_bottom_x-k),
+                    (mx_stab_outside_x-k,stab_cherry_bottom_x-k),
+                    (stab_6-k,stab_cherry_bottom_x-k),
+                    (stab_6-k,stab_12-k),
+                    (stab_4+k,stab_12-k),
+                    (stab_4+k,stab_cherry_bottom_x-k),
+                    (mx_stab_inside_x+k,stab_cherry_bottom_x-k),
+                    (mx_stab_inside_x+k,stab_13-k),
+                    (mx_width-k,stab_13-k),
+                    (mx_width-k,mx_height-k),
+                    (-mx_width+k,mx_height-k),
+                    (-mx_width+k,stab_13-k),
+                    (-mx_stab_inside_x-k,stab_13-k),
+                    (-mx_stab_inside_x-k,stab_cherry_bottom_x-k),
+                    (-stab_4-k,stab_cherry_bottom_x-k),
+                    (-stab_4-k,stab_12-k),
+                    (-stab_6+k,stab_12-k),
+                    (-stab_6+k,stab_cherry_bottom_x-k),
+                    (-mx_stab_outside_x+k,stab_cherry_bottom_x-k),
+                    (-mx_stab_outside_x+k,stab_cherry_wing_bottom_x-k),
+                    (-stab_9+k,stab_cherry_wing_bottom_x-k),
+                    (-stab_9+k,-stab_y_wire+k),
+                    (-mx_stab_outside_x+k,-stab_y_wire+k),
+                    (-mx_stab_outside_x+k,-stab_cherry_top_x+k),
+                    (-stab_6+k,-stab_cherry_top_x+k),
+                    (-stab_6+k,-stab_5+k),
+                    (-stab_4-k,-stab_5+k),
+                    (-stab_4-k,-stab_cherry_top_x+k),
+                    (-mx_stab_inside_x-k,-stab_cherry_top_x+k),
+                    (-mx_stab_inside_x-k,-mx_stab_inside_y+k),
+                    (-mx_width+k,-mx_stab_inside_y+k),
+                    (-mx_width+k,-mx_height+k),
                     (mx_width-k,-mx_height+k)
                 ]
                 if rotate:
@@ -570,16 +602,35 @@ class Plate(object):
             elif s == 1:
                 # cherry spec 2u stabilizer
                 points = [
-                    (mx_width-k,-mx_height+k), (mx_width-k,-stab_1+k), (stab_2+k,-stab_1+k), (stab_2+k,-stab_cherry_top_x+k),
-                    (stab_7-k,-stab_cherry_top_x+k), (stab_7-k,-stab_y_wire+k), (stab_9-k,-stab_y_wire+k), (stab_9-k,stab_cherry_wing_bottom_x-k),
-                    (stab_7-k,stab_cherry_wing_bottom_x-k), (stab_7-k,stab_cherry_bottom_x-k), (stab_6-k,stab_cherry_bottom_x-k), (stab_6-k,stab_cherry_bottom_wing_bottom_y-k),
-                    (stab_4+k,stab_cherry_bottom_wing_bottom_y-k), (stab_4+k,stab_cherry_bottom_x-k), (stab_2+k,stab_cherry_bottom_x-k), (stab_2+k,stab_13-k),
-                    (mx_width-k,stab_13-k), (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,stab_13-k),
-                    (-stab_2-k,stab_13-k), (-stab_2-k,stab_cherry_bottom_x-k), (-stab_4-k,stab_cherry_bottom_x-k), (-stab_4-k,stab_cherry_bottom_wing_bottom_y-k),
-                    (-stab_6+k,stab_cherry_bottom_wing_bottom_y-k), (-stab_6+k,stab_cherry_bottom_x-k), (-stab_7+k,stab_cherry_bottom_x-k), (-stab_7+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,stab_cherry_wing_bottom_x-k), (-stab_9+k,-stab_y_wire+k), (-stab_7+k,-stab_y_wire+k), (-stab_7+k,-stab_cherry_top_x+k),
-                    (-stab_2-k,-stab_cherry_top_x+k), (-stab_2-k,-stab_1+k), (-mx_width+k,-stab_1+k), (-mx_width+k,-mx_height+k),
-                    (mx_width-k,-mx_height+k)
+                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
+                    (mx_stab_inside_x+k,-stab_cherry_top_x+k),
+                    (mx_stab_outside_x-k,-stab_cherry_top_x+k),
+                    (mx_stab_outside_x-k,-stab_y_wire+k),
+                    (stab_9-k,-stab_y_wire+k),
+                    (stab_9-k,stab_cherry_wing_bottom_x-k),
+                    (mx_stab_outside_x-k,stab_cherry_wing_bottom_x-k),
+                    (mx_stab_outside_x-k,stab_cherry_bottom_x-k),
+                    (stab_6-k,stab_cherry_bottom_x-k),
+                    (stab_6-k,stab_cherry_bottom_wing_bottom_y-k),
+                    (stab_4+k,stab_cherry_bottom_wing_bottom_y-k),
+                    (stab_4+k,stab_cherry_bottom_x-k),
+                    (mx_stab_inside_x+k,stab_cherry_bottom_x-k),
+                    (mx_stab_inside_x+k,stab_13-k),
+                    (-mx_stab_inside_x-k,stab_13-k),
+                    (-mx_stab_inside_x-k,stab_cherry_bottom_x-k),
+                    (-stab_4-k,stab_cherry_bottom_x-k),
+                    (-stab_4-k,stab_cherry_bottom_wing_bottom_y-k),
+                    (-stab_6+k,stab_cherry_bottom_wing_bottom_y-k),
+                    (-stab_6+k,stab_cherry_bottom_x-k),
+                    (-mx_stab_outside_x+k,stab_cherry_bottom_x-k),
+                    (-mx_stab_outside_x+k,stab_cherry_wing_bottom_x-k),
+                    (-stab_9+k,stab_cherry_wing_bottom_x-k),
+                    (-stab_9+k,-stab_y_wire+k),
+                    (-mx_stab_outside_x+k,-stab_y_wire+k),
+                    (-mx_stab_outside_x+k,-stab_cherry_top_x+k),
+                    (-mx_stab_inside_x-k,-stab_cherry_top_x+k),
+                    (-mx_stab_inside_x-k,-mx_stab_inside_y+k),
+                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
@@ -589,11 +640,17 @@ class Plate(object):
             elif s == 2:
                 # costar stabilizers only
                 points_l = [
-                    (-stab_4-k,-stab_5+k), (-stab_6+k,-stab_5+k), (-stab_6+k,stab_12-k), (-stab_4-k,stab_12-k),
+                    (-stab_4-k,-stab_5+k),
+                    (-stab_6+k,-stab_5+k),
+                    (-stab_6+k,stab_12-k),
+                    (-stab_4-k,stab_12-k),
                     (-stab_4-k,-stab_5+k)
                 ]
                 points_r = [
-                    (stab_4+k,-stab_5+k), (stab_6-k,-stab_5+k), (stab_6-k,stab_12-k), (stab_4+k,stab_12-k),
+                    (stab_4+k,-stab_5+k),
+                    (stab_6-k,-stab_5+k),
+                    (stab_6-k,stab_12-k),
+                    (stab_4+k,stab_12-k),
                     (stab_4+k,-stab_5+k)
                 ]
                 if rotate:
@@ -607,13 +664,17 @@ class Plate(object):
             elif s in (3, 4):
                 # Alps stabilizers
                 points_r = [
-                    (alps_stab_inside_x+k, alps_stab_top_y+k), (alps_stab_ouside_x-k, alps_stab_top_y+k),
-                    (alps_stab_ouside_x-k, alps_stab_bottom_y-k), (alps_stab_inside_x+k, alps_stab_bottom_y-k),
+                    (alps_stab_inside_x+k, alps_stab_top_y+k),
+                    (alps_stab_ouside_x-k, alps_stab_top_y+k),
+                    (alps_stab_ouside_x-k, alps_stab_bottom_y-k),
+                    (alps_stab_inside_x+k, alps_stab_bottom_y-k),
                     (alps_stab_inside_x+k, alps_stab_top_y+k)
                 ]
                 points_l = [
-                    (-alps_stab_inside_x+k, alps_stab_top_y+k), (-alps_stab_ouside_x-k, alps_stab_top_y+k),
-                    (-alps_stab_ouside_x-k, alps_stab_bottom_y-k), (-alps_stab_inside_x+k, alps_stab_bottom_y-k),
+                    (-alps_stab_inside_x+k, alps_stab_top_y+k),
+                    (-alps_stab_ouside_x-k, alps_stab_top_y+k),
+                    (-alps_stab_ouside_x-k, alps_stab_bottom_y-k),
+                    (-alps_stab_inside_x+k, alps_stab_bottom_y-k),
                     (-alps_stab_inside_x+k, alps_stab_top_y+k)
                 ]
 
@@ -679,62 +740,35 @@ class Plate(object):
             elif s == 1:
                 # cherry spec spacebar stabilizer
                 points = [
-                    (x - stab_cherry_half_width + k, -stab_y_wire + k),
-                    (x - stab_cherry_half_width + k, -stab_cherry_top_x + k),
-                    (x + stab_cherry_half_width - k, -stab_cherry_top_x + k),
-                    (x + stab_cherry_half_width - k, -stab_y_wire + k),
-                    (x + stab_cherry_outside_x - k, -stab_y_wire + k),
-                    (x + stab_cherry_outside_x - k, stab_cherry_wing_bottom_x - k),
-                    (x + stab_cherry_half_width - k, stab_cherry_wing_bottom_x - k),
-                    (x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),
-                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),
-                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),
-                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),
-                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),
-                    (x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),
-                    (x - stab_cherry_half_width + k, stab_y_wire - k),
-                    (-x + stab_cherry_half_width - k, stab_y_wire - k),
-                    (-x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),
-                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),
-                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),
-                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),
-                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),
-                    (-x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),
-                    (-x - stab_cherry_half_width + k, stab_cherry_wing_bottom_x - k),
-                    (-x - stab_cherry_outside_x + k, stab_cherry_wing_bottom_x - k),
-                    (-x - stab_cherry_outside_x + k, -stab_y_wire + k),
-                    (-x - stab_cherry_half_width + k, -stab_y_wire + k),
-                    (-x - stab_cherry_half_width + k, -stab_cherry_top_x + k),
-                    (-x + stab_cherry_half_width - k, -stab_cherry_top_x + k),
-                    (-x + stab_cherry_half_width - k, -stab_y_wire + k),
-                    (x - stab_cherry_half_width + k, -stab_y_wire + k),
-                ]
-                points_l = [
-                    (0, -5.53),
-                    (50.95, -5.53),
-                    (50.95, -2.3),
-                    (51.825, -2.3),
-                    (51.825, 0.5),
-                    (50.95, 0.5),
-                    (50.95, 6.77),
-                    (49.275, 6.77),
-                    (49.275, 7.97),
-                    (45.975, 7.97),
-                    (45.975, 6.77),
-                    (44.3, 6.77),
-                    (44.3, 2.3),
-                    (0, 2.3)
-                ]
-                points_l = [
-                    (0, -2.3),
-                    (44.3, -2.3),
-                    (44.3, -5.53),
-                    (51.825, -5.53),
-                    (51.825, 7.97),
-                    (44.3, 7.97),
-                    (44.3, 2.3),
-                    (0, 2.3),
-                    (0, -2.3)
+                    (x - stab_cherry_half_width + k, -stab_y_wire + k),#1
+                    (x - stab_cherry_half_width + k, -stab_cherry_top_x + k),#2
+                    (x + stab_cherry_half_width - k, -stab_cherry_top_x + k),#3
+                    (x + stab_cherry_half_width - k, -stab_y_wire + k),#4
+                    (x + stab_cherry_outside_x - k, -stab_y_wire + k),#5
+                    (x + stab_cherry_outside_x - k, stab_cherry_wing_bottom_x - k),#6
+                    (x + stab_cherry_half_width - k, stab_cherry_wing_bottom_x - k),#7
+                    (x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),#8
+                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),#9
+                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),#10
+                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),#11
+                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),#12
+                    (x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),#13
+                    (x - stab_cherry_half_width + k, stab_bottom_y_wire - k),#14
+                    (-x + stab_cherry_half_width - k, stab_bottom_y_wire - k),#15
+                    (-x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),#16
+                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),#17
+                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),#18
+                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),#19
+                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),#20
+                    (-x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),#21
+                    (-x - stab_cherry_half_width + k, stab_cherry_wing_bottom_x - k),#22
+                    (-x - stab_cherry_outside_x + k, stab_cherry_wing_bottom_x - k),#23
+                    (-x - stab_cherry_outside_x + k, -stab_y_wire + k),#24
+                    (-x - stab_cherry_half_width + k, -stab_y_wire + k),#25
+                    (-x - stab_cherry_half_width + k, -stab_cherry_top_x + k),#26
+                    (-x + stab_cherry_half_width - k, -stab_cherry_top_x + k),#27
+                    (-x + stab_cherry_half_width - k, -stab_y_wire + k),#28
+                    (x - stab_cherry_half_width + k, -stab_y_wire + k),#1
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
