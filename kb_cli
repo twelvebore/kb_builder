@@ -5,13 +5,13 @@ By default this reads the data on stdin. You can also use --file to pass data
 in through a file.
 """
 import argparse
+import builder
 import hashlib
 import hjson
 import logging
 import sys
 from time import time
 from config import config
-from lib import builder
 
 
 logging.basicConfig()
