@@ -38,7 +38,7 @@ parser.add_argument('--corners', default=0, type=float, help='Radius for corners
 parser.add_argument('--corner-type', default='round', type=str, help='What kind of corners to make (*round, beveled)')
 parser.add_argument('--thickness', default=0, type=float, help='Plate thickness, 0 to disable (Default: 0)')
 parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (Default: 0)')
-parser.add_argument('--svg', action='store_true', help='Generate an SVG file too.')
+parser.add_argument('--add-format', default=[], action='append', help='Add a format to be exported (brp, stp, stl)')
 args = parser.parse_args()
 
 # Make sure the corners are specified correctly
@@ -104,6 +104,10 @@ if args.hole:
         x, y, diameter = hole.split(',')  # Make sure it's in the right format
         holes.append((float(x), float(y), float(diameter)))
 
+# Determine what formats to support
+for format in args.add_format:
+    config['app']['formats'].append(format)
+
 # MAIN
 if __name__ == '__main__':
     if args.file:
@@ -133,7 +137,6 @@ if __name__ == '__main__':
         'usb_inner_width': args.usb_inner_width,
         'usb_outer_width': args.usb_outer_width,
         'usb_offset': args.usb_offset,
-        'export_svg': args.svg,
         'keyboard_layout': layout,
     }
 

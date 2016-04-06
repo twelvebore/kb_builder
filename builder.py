@@ -50,10 +50,7 @@ CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 class Plate(object):
-    def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0,
-                 usb_inner_width=10, usb_outer_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1,
-                 usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
-                 thickness=1.5, holes=None, reinforcing=False):
+    def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False):
         # User settable things
         self.case = {'type': case_type}
         self.corner_type = corner_type
@@ -123,10 +120,6 @@ class Plate(object):
 
         if reinforcing:
             self.layers += [REINFORCING_LAYER]
-
-        # If we don't want SVG remove it from the available formats
-        if not export_svg:
-            self.formats.remove('svg')
 
     # this is the main draw function for the class and handles the logical flow and orchestration
     def draw(self, result, data_hash, config):
