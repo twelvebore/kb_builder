@@ -51,8 +51,8 @@ OPEN_LAYER = 'open'
 
 class Plate(object):
     def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0,
-                 usb_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1, usb_offset=0,
-                 pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
+                 usb_inner_width=10, usb_outer_width=10, export_svg=False, stab_type=0, corners=0, switch_type=1,
+                 usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
                  thickness=1.5, holes=None, reinforcing=False):
         # User settable things
         self.case = {'type': case_type}
@@ -64,7 +64,8 @@ class Plate(object):
         self.stab_type = stab_type
         self.switch_type = switch_type
         self.thickness = thickness
-        self.usb_width = usb_width
+        self.usb_inner_width = usb_inner_width
+        self.usb_outer_width = usb_outer_width
         self.usb_offset = usb_offset
         self.x_pad = width_padding
         self.x_pcb_pad = pcb_width_padding / 2
@@ -268,11 +269,14 @@ class Plate(object):
 
         if OPEN_LAYER in self.layers:
             p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
-
             points = [
-                (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf), (self.usb_width/2+self.usb_offset-self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
-                (self.usb_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf), (-self.usb_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
-                (-self.usb_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf)
+                (-self.usb_outer_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+                (self.usb_outer_width/2+self.usb_offset-self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+                (self.usb_inner_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_inner_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (self.usb_inner_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_inner_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_outer_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf)
             ]
             p = p.polyline(points).cutThruAll()
             self.export(p, result, OPEN_LAYER, data_hash, config)

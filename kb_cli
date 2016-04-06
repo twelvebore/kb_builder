@@ -25,8 +25,9 @@ parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-c
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
 parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
 parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
-parser.add_argument('--usb-width', default=10, type=float, help='Default width for the USB connector cutout')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
+parser.add_argument('--usb-inner-width', default=10, type=float, help='Default width for the USB connector cutout closest to the PCB')
+parser.add_argument('--usb-outer-width', default=14, type=float, help='Default width for the USB connector cutout furthest from the PCB')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
@@ -129,7 +130,8 @@ if __name__ == '__main__':
         'thickness': args.thickness,
         'kerf': args.kerf,
         'reinforcing': args.reinforcing,
-        'usb_width': args.usb_width,
+        'usb_inner_width': args.usb_inner_width,
+        'usb_outer_width': args.usb_outer_width,
         'usb_offset': args.usb_offset,
         'export_svg': args.svg,
         'keyboard_layout': layout,
