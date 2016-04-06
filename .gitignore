@@ -7,3 +7,4 @@
 static/exports
 Makefile
 make_order
+make_*.sh
