@@ -45,7 +45,7 @@ CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 class Plate(object):
-    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False):
+    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False, oversize=[], oversize_distance=4):
         # User settable things
         self.export_basename = export_basename
         self.case = {'type': case_type}
@@ -54,6 +54,8 @@ class Plate(object):
         self.kerf = kerf / 2
         self.keyboard_layout = keyboard_layout
         self.holes = holes if holes else []
+        self.oversize = oversize
+        self.oversize_distance = oversize_distance
         self.stab_type = stab_type
         self.switch_type = switch_type
         self.thickness = thickness
@@ -120,10 +122,10 @@ class Plate(object):
         # Determine the size of each key
         self.parse_layout()
 
-    def create_simple_bottom_layer(self):
+    def create_simple_bottom_layer(self, oversize=0):
         """Returns a copy of the simple bottom layer ready to export.
         """
-        p = self.init_plate()
+        p = self.init_plate(oversize=oversize)
         p = p.center(self.width/2 + self.kerf, self.height/2 + self.kerf) # move to center of the plate
         p = p.polyline([(self.width,0), (self.width,1), (self.width+1,1), (self.width,0)]).cutThruAll() # Stupid hack I don't understand.
                                                                                                         # Without this I get:
@@ -131,11 +133,11 @@ class Plate(object):
 
         return p
 
-    def create_bottom_layer(self):
+    def create_bottom_layer(self, oversize=0):
         """Returns a copy of the bottom layer ready to export.
         """
-        p = self.create_simple_bottom_layer()
-        p = self.cut_usb_hole(p)
+        p = self.create_simple_bottom_layer(oversize=oversize)
+        p = self.cut_usb_hole(p, oversize=oversize)
         points = [
             (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
             (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
@@ -147,10 +149,10 @@ class Plate(object):
 
         return p
 
-    def create_closed_layer(self):
+    def create_closed_layer(self, oversize=0):
         """Returns a copy of the closed layer ready to export.
         """
-        p = self.create_simple_bottom_layer()
+        p = self.create_simple_bottom_layer(oversize=oversize)
         points = [
             (-self.width/2+self.x_pad+self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
             (self.width/2-self.x_pad-self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
@@ -162,11 +164,11 @@ class Plate(object):
 
         return p
 
-    def create_open_layer(self):
+    def create_open_layer(self, oversize=0):
         """Returns a copy of the open layer ready to export.
         """
-        p = self.create_closed_layer()
-        p = self.cut_usb_hole(p)
+        p = self.create_closed_layer(oversize=oversize)
+        p = self.cut_usb_hole(p, oversize=oversize)
 
         return p
 
@@ -177,8 +179,7 @@ class Plate(object):
         """
         prev_width = None
         prev_y_off = 0
-
-        p = self.init_plate()
+        p = self.init_plate(oversize=self.oversize_distance if layer in self.oversize else 0)
 
         if layer != TOP_LAYER:
             p = self.cut_holes(p)
@@ -220,18 +221,18 @@ class Plate(object):
 
         return p
 
-    def cut_usb_hole(self, p):
+    def cut_usb_hole(self, p, oversize=0):
         """Cut the opening that allows for the USB hole. Assumes the drawing is already centered.
         """
         p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf) # Move up to where the USB connector will be.
         points = [
-            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf),
-            (self.usb_outer_width/2+self.usb_offset-self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf),
+            (self.usb_outer_width/2+self.usb_offset-self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf),
             (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
             (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
             (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
             (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
-            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf)
+            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf)
         ]
         p = p.polyline(points).cutThruAll()
 
@@ -262,7 +263,7 @@ class Plate(object):
         )
         for layer, create_layer in layers:
             if layer in self.layers:
-                p = create_layer()
+                p = create_layer(oversize=self.oversize_distance if layer in self.oversize else 0)
                 self.export(p, result, layer)
 
         # Create the switch based layers

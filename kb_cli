@@ -41,6 +41,8 @@ parser.add_argument('--thickness', default=0, type=float, help='Plate thickness,
 parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (Default: 0)')
 parser.add_argument('--add-format', default=[], action='append', help='Add a format to be exported (brp, stp, stl)')
 parser.add_argument('--output-dir', type=str, help='What directory to output files to (Default: %s)' % config.app['export'])
+parser.add_argument('--oversize', default=[], action='append', help='Make a layer larger than the other layers')
+parser.add_argument('--oversize-distance', type=int, default=4, help='How much larger an oversized layer is.')
 args = parser.parse_args()
 
 # Make sure the corners are specified correctly
@@ -145,6 +147,8 @@ if __name__ == '__main__':
         'usb_height': args.usb_height,
         'usb_offset': args.usb_offset,
         'keyboard_layout': layout,
+        'oversize': args.oversize,
+        'oversize_distance': args.oversize_distance
     }
 
     # Figure out the export file name
