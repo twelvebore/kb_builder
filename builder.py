@@ -181,9 +181,6 @@ class Plate(object):
         prev_y_off = 0
         p = self.init_plate(oversize=self.oversize_distance if layer in self.oversize else 0)
 
-        if layer != TOP_LAYER:
-            p = self.cut_holes(p)
-
         for r, row in enumerate(self.layout):
             for k, key in enumerate(row):
                 x, y, kx = 0, 0, 0
@@ -198,7 +195,7 @@ class Plate(object):
                     p = self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
                     x += (self.x_pad+self.x_pcb_pad)
                     y += (self.y_pad+self.y_pcb_pad)
-                    # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
+                    # set x_off negative since the 'cut_switch' will append 'x' and we need to account for initial spacing
                     self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
                 elif k == 0: # handle changing rows
                     p = self.center(p, -self.x_off, self.u1) # move to the next row
@@ -219,6 +216,10 @@ class Plate(object):
                 p = self.cut_switch(p, (x, y), key, layer)
                 prev_width = key['w']
 
+        if layer != TOP_LAYER:
+            # Put holes into switch/reinforcing plates
+            p = self.cut_switch_plate_holes(p)
+
         return p
 
     def cut_usb_hole(self, p, oversize=0):
@@ -238,7 +239,7 @@ class Plate(object):
 
         return p
 
-    def cut_holes(self, p):
+    def cut_switch_plate_holes(self, p):
         """Cut any holes specified for the switch/reinforcing plate.
         """
         for hole in self.holes:
@@ -499,8 +500,13 @@ class Plate(object):
             # Cut out openings the size of keycaps
             t = 0
             s = 1
-            mx_width = (self.u1/2+0.5) * w
-            mx_height = self.u1/2+0.5
+            #mx_width = (self.u1/2+0.5) * w
+            #mx_height = self.u1/2+0.5
+            if h > 1:
+                mx_width = ((self.u1/2) * h) + 0.5
+            else:
+                mx_width = ((self.u1/2) * w) + 0.5
+            mx_height = (self.u1/2) + 0.5
         elif layer is REINFORCING_LAYER:
             offset = 1
             mx_height += offset
