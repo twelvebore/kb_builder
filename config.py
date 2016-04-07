@@ -16,18 +16,32 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import sys
 
-config = {}
 
-config['app'] = {}
-config['app']['port'] = 80
-config['app']['pwd'] = os.path.dirname(__file__)
-config['app']['static'] = os.path.join(config['app']['pwd'], 'static')
-config['app']['export'] = os.path.join(config['app']['static'], 'exports')
-config['app']['formats'] = ['js', 'dxf', 'json'] # default formats to include
-config['app']['debug'] = False
-config['app']['log'] = './kb_builder.log'
+pwd = os.path.dirname(__file__)
 
-config['lib'] = {}
-config['lib']['freecad_lib_dir'] = "/usr/lib/freecad/lib"
-config['lib']['freecad_mod_dir'] = ""
+app = {
+    'port': 80,
+    'pwd': pwd,
+    'static': os.path.join(pwd, 'static'),
+    'export': os.path.join(pwd, 'static', 'exports'),
+    'formats': ['dxf'],
+    'debug': False,
+    'log': './kb_builder.log'
+}
+
+lib = {
+    'freecad_lib_dir': "/usr/lib/freecad/lib",
+    'freecad_mod_dir': ""
+}
+
+
+# Setup some environment stuff
+if lib.get('freecad_lib_dir'):
+    sys.path.append(lib['freecad_lib_dir'])
+
+if lib.get('freecad_mod_dir'):
+    for mod in os.listdir(lib['freecad_mod_dir']):
+        mod_path = os.path.join(lib['freecad_mod_dir'], mod)
+        if os.path.isdir(mod_path): sys.path.append(mod_path)

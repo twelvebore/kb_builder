@@ -24,16 +24,10 @@ import math
 import os
 import sys
 
-from config import config as cfg
+import config
 
 log = logging.getLogger()
 
-if 'lib' in cfg and 'freecad_lib_dir' in cfg['lib'] and cfg['lib']['freecad_lib_dir'] != "":
-    sys.path.append(cfg['lib']['freecad_lib_dir'])
-if 'lib' in cfg and 'freecad_mod_dir' in cfg['lib'] and cfg['lib']['freecad_mod_dir'] != "":
-    for mod in os.listdir(cfg['lib']['freecad_mod_dir']):
-        mod_path = os.path.join(cfg['lib']['freecad_mod_dir'], mod)
-        if os.path.isdir(mod_path): sys.path.append(mod_path)
 
 import FreeCAD
 import cadquery
@@ -46,12 +40,14 @@ SWITCH_LAYER = 'switch'
 REINFORCING_LAYER = 'reinforcing'
 TOP_LAYER = 'top'
 BOTTOM_LAYER = 'bottom'
+SIMPLE_LAYER = 'simple'
 CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 class Plate(object):
-    def __init__(self, keyboard_layout, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False):
+    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False):
         # User settable things
+        self.export_basename = export_basename
         self.case = {'type': case_type}
         self.corner_type = corner_type
         self.corners = corners
@@ -63,6 +59,7 @@ class Plate(object):
         self.thickness = thickness
         self.usb_inner_width = usb_inner_width
         self.usb_outer_width = usb_outer_width
+        self.usb_height = usb_height
         self.usb_offset = usb_offset
         self.x_pad = width_padding
         self.x_pcb_pad = pcb_width_padding / 2
@@ -81,7 +78,6 @@ class Plate(object):
         # Plate state info
         self.UOM = "mm"
         self.exports = {}
-        self.formats = cfg['app']['formats'][:]  # Use a copy in case we remove SVG later
         self.grow_y = 0
         self.grow_x = 0
         self.height = 0
@@ -112,7 +108,7 @@ class Plate(object):
             if mount_holes_size > 0:
                 self.case = {'type': 'poker', 'hole_diameter': mount_holes_size}
         elif self.case['type'] == 'sandwich':
-            self.layers += [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, BOTTOM_LAYER]
+            self.layers += [TOP_LAYER, REINFORCING_LAYER, OPEN_LAYER, CLOSED_LAYER, SIMPLE_LAYER, BOTTOM_LAYER]
             if mount_holes_num > 0 and mount_holes_size > 0:
                 self.case = {'type': 'sandwich', 'holes': mount_holes_num, 'hole_diameter': mount_holes_size, 'x_holes':0, 'y_holes':0}
         elif self.case['type']:
@@ -121,163 +117,165 @@ class Plate(object):
         if reinforcing:
             self.layers += [REINFORCING_LAYER]
 
-    # this is the main draw function for the class and handles the logical flow and orchestration
-    def draw(self, result, data_hash, config):
+        # Determine the size of each key
         self.parse_layout()
+
+    def create_simple_bottom_layer(self):
+        """Returns a copy of the simple bottom layer ready to export.
+        """
         p = self.init_plate()
-        result['width'] = self.width
-        result['height'] = self.height
+        p = p.center(self.width/2 + self.kerf, self.height/2 + self.kerf) # move to center of the plate
+        p = p.polyline([(self.width,0), (self.width,1), (self.width+1,1), (self.width,0)]).cutThruAll() # Stupid hack I don't understand.
+                                                                                                        # Without this I get:
+                                                                                                        # TypeError: must be Part.Shape, not Base.Vector
 
-        # Cut the beveled corners if applicable
-        if self.corners > 0 and self.corner_type == 0:
-            pass  # Rounded corners are handled in self.init_plate()
-        elif self.corners > 0 and self.corner_type == 1:
-            # Lower right corner
-            points = (
-                (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
-                (self.horizontal_edge - self.corners, self.vertical_edge), (self.horizontal_edge, self.vertical_edge - self.corners),
-            )
-            p = p.polyline(points).cutThruAll()
-            # Lower left corner
-            points = (
-                (-self.horizontal_edge, self.vertical_edge - self.corners), (-self.horizontal_edge, self.vertical_edge),
-                (-self.horizontal_edge + self.corners, self.vertical_edge), (-self.horizontal_edge, self.vertical_edge - self.corners),
-            )
-            p = p.polyline(points).cutThruAll()
-            # Upper right corner
-            points = (
-                (self.horizontal_edge, -self.vertical_edge + self.corners), (self.horizontal_edge, -self.vertical_edge),
-                (self.horizontal_edge - self.corners, -self.vertical_edge), (self.horizontal_edge, -self.vertical_edge + self.corners),
-            )
-            p = p.polyline(points).cutThruAll()
-            # Upper left corner
-            points = (
-                (-self.horizontal_edge, -self.vertical_edge + self.corners), (-self.horizontal_edge, -self.vertical_edge),
-                (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
-            )
-            p = p.polyline(points).cutThruAll()
-        else:
-            log.error('Unknown corner type %s! Disabling corners.', self.corner_type)
+        return p
 
-        # cut any specified holes
+    def create_bottom_layer(self):
+        """Returns a copy of the bottom layer ready to export.
+        """
+        p = self.create_simple_bottom_layer()
+        p = self.cut_usb_hole(p)
+        points = [
+            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
+            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
+            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf)
+        ]
+        p = p.polyline(points).cutThruAll()
+
+        return p
+
+    def create_closed_layer(self):
+        """Returns a copy of the closed layer ready to export.
+        """
+        p = self.create_simple_bottom_layer()
+        points = [
+            (-self.width/2+self.x_pad+self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
+            (self.width/2-self.x_pad-self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
+            (self.width/2-self.x_pad-self.kerf*2, self.height/2-self.y_pad-self.kerf*2),
+            (-self.width/2+self.x_pad+self.kerf*2, self.height/2-self.y_pad-self.kerf*2),
+            (-self.width/2+self.x_pad+self.kerf*2, -self.height/2+self.y_pad+self.kerf*2)
+        ]
+        p = p.polyline(points).cutThruAll()
+
+        return p
+
+    def create_open_layer(self):
+        """Returns a copy of the open layer ready to export.
+        """
+        p = self.create_closed_layer()
+        p = self.cut_usb_hole(p)
+
+        return p
+
+    def create_switch_layer(self, layer):
+        """Returns a copy of one of the switch based layers ready to export.
+
+        The switch based layers are SWITCH_LAYER, REINFORCING_LAYER, and TOP_LAYER.
+        """
+        prev_width = None
+        prev_y_off = 0
+
+        p = self.init_plate()
+
+        if layer != TOP_LAYER:
+            p = self.cut_holes(p)
+
+        for r, row in enumerate(self.layout):
+            for k, key in enumerate(row):
+                x, y, kx = 0, 0, 0
+                if 'x' in key:
+                    x = key['x']*self.u1
+                    kx = x
+
+                if 'y' in key and k == 0:
+                    y = key['y']*self.u1
+
+                if r == 0 and k == 0: # handle placement of the first key in first row
+                    p = self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
+                    x += (self.x_pad+self.x_pcb_pad)
+                    y += (self.y_pad+self.y_pcb_pad)
+                    # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
+                    self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
+                elif k == 0: # handle changing rows
+                    p = self.center(p, -self.x_off, self.u1) # move to the next row
+                    self.x_off = 0 # reset back to the left side of the plate
+                    x += self.u1/2 + key['w']*self.u1/2
+                else: # handle all other keys
+                    x += prev_width*self.u1/2 + key['w']*self.u1/2
+
+                if prev_y_off != 0: # prev_y_off != 0
+                    y += -prev_y_off
+                    prev_y_off = 0
+
+                if 'h' in key and key['h'] > 1: # deal with vertical keys
+                    prev_y_off = key['h']*self.u1/2 - self.u1/2
+                    y += prev_y_off
+
+                # Cut the switch hole
+                p = self.cut_switch(p, (x, y), key, layer)
+                prev_width = key['w']
+
+        return p
+
+    def cut_usb_hole(self, p):
+        """Cut the opening that allows for the USB hole. Assumes the drawing is already centered.
+        """
+        p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf) # Move up to where the USB connector will be.
+        points = [
+            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+            (self.usb_outer_width/2+self.usb_offset-self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf),
+            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+            (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-self.kerf)
+        ]
+        p = p.polyline(points).cutThruAll()
+
+        return p
+
+    def cut_holes(self, p):
+        """Cut any holes specified for the switch/reinforcing plate.
+        """
         for hole in self.holes:
             x, y, diameter = hole
             p = p.center(x, y).circle(diameter/2).cutThruAll()
             p = p.center(-x, -y)
 
-        # cut the mount holes in the plate
-        if self.case['type'] == 'poker':
-            hole_points = [(-139,9.2), (-117.3,-19.4), (-14.3,0), (48,37.9), (117.55,-19.4), (139,9.2)] # holes
-            rect_center = (self.width/2) - (3.5/2)
-            rect_points = [(rect_center,9.2), (-rect_center,9.2)] # edge slots
-            rect_size = (3.5, 5) # edge slot cutout to edge
-            for c in hole_points:
-                p = p.center(c[0], c[1]).hole(self.case['hole_diameter']).center(-c[0],-c[1])
-            for c in rect_points:
-                p = p.center(c[0], c[1]).rect(rect_size[0], rect_size[1]).center(-c[0],-c[1])
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
-        elif self.case['type'] == 'sandwich':
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
-            if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
-                self.layout_sandwich_holes()
-                radius = self.case['hole_diameter']/2 - self.kerf
-                x_gap = (self.width - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['x_holes'] + 1)
-                y_gap = (self.height - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['y_holes'] + 1)
-                p = p.center(self.case['hole_diameter']-.5, self.case['hole_diameter']-.5)
-                for i in range(self.case['x_holes'] + 1):
-                    p = p.center(x_gap,0).circle(radius).cutThruAll()
-                for i in range(self.case['y_holes'] + 1):
-                    p = p.center(0,y_gap).circle(radius).cutThruAll()
-                for i in range(self.case['x_holes'] + 1):
-                    p = p.center(-x_gap,0).circle(radius).cutThruAll()
-                for i in range(self.case['y_holes'] + 1):
-                    p = p.center(0,-y_gap).circle(radius).cutThruAll()  # FIXME: Figure out why this one needs p =
-                if result['has_layers']:
-                    self.export(p, result, BOTTOM_LAYER, data_hash, config)
-                p = p.center(-self.case['hole_diameter']+.5, -self.case['hole_diameter']+.5)
-        elif not self.case['type'] or self.case['type'] == 'reinforcing':
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
-        else:
-            log.error('Unknown case type: %s', self.case['type'])
+        return p
 
-        # cut all the switch and stabilizer openings...
+    def draw(self, result):
+        """Create and export all our layers.
+        """
+        result['width'] = self.width
+        result['height'] = self.height
+
+        # Create the shape based layers
+        layers = (
+            (SIMPLE_LAYER, self.create_simple_bottom_layer),
+            (BOTTOM_LAYER, self.create_bottom_layer),
+            (CLOSED_LAYER, self.create_closed_layer),
+            (OPEN_LAYER, self.create_open_layer),
+        )
+        for layer, create_layer in layers:
+            if layer in self.layers:
+                p = create_layer()
+                self.export(p, result, layer)
+
+        # Create the switch based layers
         for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
-            if layer not in self.layers:
-                break
+            if layer in self.layers:
+                p = self.create_switch_layer(layer)
+                self.export(p, result, layer)
 
-            prev_width = None
-            prev_y_off = 0
-
-            if layer != SWITCH_LAYER:
-                p = self.center(p, -self.origin[0], -self.origin[1]) # move to the center of the plate
-                p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
-
-            for r, row in enumerate(self.layout):
-                for k, key in enumerate(row):
-                    x, y, kx = 0, 0, 0
-                    if 'x' in key:
-                        x = key['x']*self.u1
-                        kx = x
-
-                    if 'y' in key and k == 0:
-                        y = key['y']*self.u1
-
-                    if r == 0 and k == 0: # handle placement of the first key in first row
-                        p = self.center(p, key['w'] * self.u1 / 2, self.u1 / 2)
-                        x += (self.x_pad+self.x_pcb_pad)
-                        y += (self.y_pad+self.y_pcb_pad)
-                        # set x_off negative since the 'cut_switch' will append 'x' and we need to account inital spacing
-                        self.x_off = -(x - (self.u1/2 + key['w']*self.u1/2) - kx)
-                    elif k == 0: # handle changing rows
-                        p = self.center(p, -self.x_off, self.u1) # move to the next row
-                        self.x_off = 0 # reset back to the left side of the plate
-                        x += self.u1/2 + key['w']*self.u1/2
-                    else: # handle all other keys
-                        x += prev_width*self.u1/2 + key['w']*self.u1/2
-
-                    if prev_y_off != 0: # prev_y_off != 0
-                        y += -prev_y_off
-                        prev_y_off = 0
-
-                    if 'h' in key and key['h'] > 1: # deal with vertical keys
-                        prev_y_off = key['h']*self.u1/2 - self.u1/2
-                        y += prev_y_off
-
-                    # Cut the switch hole
-                    p = self.cut_switch(p, (x, y), key, layer)
-                    prev_width = key['w']
-
-            self.export(p, result, layer, data_hash, config)
-
-        # cut layers
-        if CLOSED_LAYER in self.layers:
-            p = p.center(-self.origin[0], -self.origin[1])  # move to the center of the plate
-            points = [
-                (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2), (self.width/2-self.x_pad-self.kerf*2,-self.height/2+self.y_pad+self.kerf*2),
-                (self.width/2-self.x_pad-self.kerf*2,self.height/2-self.y_pad-self.kerf*2), (-self.width/2+self.x_pad+self.kerf*2,self.height/2-self.y_pad-self.kerf*2),
-                (-self.width/2+self.x_pad+self.kerf*2,-self.height/2+self.y_pad+self.kerf*2)
-            ]
-            p = p.polyline(points).cutThruAll()
-            self.export(p, result, CLOSED_LAYER, data_hash, config)
-
-        if OPEN_LAYER in self.layers:
-            p = p.center(0, -self.height/2+(self.y_pad+self.y_pcb_pad)/2+self.kerf)
-            points = [
-                (-self.usb_outer_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
-                (self.usb_outer_width/2+self.usb_offset-self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf),
-                (self.usb_inner_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
-                (-self.usb_inner_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
-                (self.usb_inner_width/2+self.usb_offset-self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
-                (-self.usb_inner_width/2+self.usb_offset+self.kerf,(self.y_pad+self.y_pcb_pad)/2+self.kerf),
-                (-self.usb_outer_width/2+self.usb_offset+self.kerf,-(self.y_pad+self.y_pcb_pad)/2-self.kerf)
-            ]
-            p = p.polyline(points).cutThruAll()
-            self.export(p, result, OPEN_LAYER, data_hash, config)
         return result
 
-
-    # parse the supplied layout to determine size and populate the properties of each 'key'
     def parse_layout(self):
+        """Parse the supplied layout to determine size and populate the properties of each key
+        """
         layout_width = 0
         layout_height = 0
         key_desc = False # track if current is not a key and only describes the next key
@@ -323,15 +321,82 @@ class Plate(object):
         self.horizontal_edge = self.width / 2
         self.vertical_edge = self.height / 2
 
+    def init_plate(self, oversize=0):
+        """Return a basic plate with the features that are common to all layers.
 
-    # initialize the plate object 'p' and get it ready to work with
-    def init_plate(self):
-        p = cadquery.Workplane("front").box(self.width, self.height, self.thickness)
+        If oversize is greater than 0 the layer will be made that many mm larger than default, while keeping screws in the same position.
+        """
+        p = cadquery.Workplane("front").box(self.width+oversize, self.height+oversize, self.thickness)
 
+        # Cut the corners if necessary
         if self.corners > 0 and self.corner_type == 0:
             p = p.edges("|Z").fillet(self.corners)
 
-        return p.faces("<Z").workplane()
+        p = p.faces("<Z").workplane()
+
+        if self.corners > 0:
+            if self.corner_type == 1:
+                # Lower right corner
+                points = (
+                    (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
+                    (self.horizontal_edge - self.corners, self.vertical_edge), (self.horizontal_edge, self.vertical_edge - self.corners),
+                )
+                p = p.polyline(points).cutThruAll()
+                # Lower left corner
+                points = (
+                    (-self.horizontal_edge, self.vertical_edge - self.corners), (-self.horizontal_edge, self.vertical_edge),
+                    (-self.horizontal_edge + self.corners, self.vertical_edge), (-self.horizontal_edge, self.vertical_edge - self.corners),
+                )
+                p = p.polyline(points).cutThruAll()
+                # Upper right corner
+                points = (
+                    (self.horizontal_edge, -self.vertical_edge + self.corners), (self.horizontal_edge, -self.vertical_edge),
+                    (self.horizontal_edge - self.corners, -self.vertical_edge), (self.horizontal_edge, -self.vertical_edge + self.corners),
+                )
+                p = p.polyline(points).cutThruAll()
+                # Upper left corner
+                points = (
+                    (-self.horizontal_edge, -self.vertical_edge + self.corners), (-self.horizontal_edge, -self.vertical_edge),
+                    (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
+                )
+                p = p.polyline(points).cutThruAll()
+            elif self.corner_type != 0:
+                log.error('Unknown corner type %s!', self.corner_type)
+
+        # Cut the mount holes in the plate
+        if self.case['type'] == 'poker':
+            hole_points = [(-139,9.2), (-117.3,-19.4), (-14.3,0), (48,37.9), (117.55,-19.4), (139,9.2)] # holes
+            rect_center = (self.width/2) - (3.5/2)
+            rect_points = [(rect_center,9.2), (-rect_center,9.2)] # edge slots
+            rect_size = (3.5, 5) # edge slot cutout to edge
+            for c in hole_points:
+                p = p.center(c[0], c[1]).hole(self.case['hole_diameter']).center(-c[0],-c[1])
+            for c in rect_points:
+                p = p.center(c[0], c[1]).rect(rect_size[0], rect_size[1]).center(-c[0],-c[1])
+            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+        elif self.case['type'] == 'sandwich':
+            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+            if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
+                self.layout_sandwich_holes()
+                radius = self.case['hole_diameter']/2 - self.kerf
+                x_gap = (self.width - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['x_holes'] + 1)
+                y_gap = (self.height - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['y_holes'] + 1)
+                p = p.center(self.case['hole_diameter']-.5, self.case['hole_diameter']-.5)
+                for i in range(self.case['x_holes'] + 1):
+                    p = p.center(x_gap,0).circle(radius).cutThruAll()
+                for i in range(self.case['y_holes'] + 1):
+                    p = p.center(0,y_gap).circle(radius).cutThruAll()
+                for i in range(self.case['x_holes'] + 1):
+                    p = p.center(-x_gap,0).circle(radius).cutThruAll()
+                for i in range(self.case['y_holes'] + 1):
+                    p = p.center(0,-y_gap).circle(radius).cutThruAll()
+                p.center(-self.case['hole_diameter']+.5, -self.case['hole_diameter']+.5)
+        elif not self.case['type'] or self.case['type'] == 'reinforcing':
+            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+        else:
+            log.error('Unknown case type: %s', self.case['type'])
+
+        return p
 
 
     # since the sandwich plate has a dynamic number of holes, determine where the specified holes should be placed
@@ -830,44 +895,44 @@ class Plate(object):
 
 
 
-    def export(self, p, result, label, data_hash, config):
+    def export(self, p, result, label):
         # export the plate to different file formats
-        log.info("Exporting %s layer for %s" % (label, data_hash))
+        log.info("Exporting %s layer for %s", label, self.export_basename)
         # draw the part so we can export it
         Part.show(p.val().wrapped)
         doc = FreeCAD.ActiveDocument
         # export the drawing into different formats
-        pwd_len = len(config['app']['pwd']) # the absolute part of the working directory (aka - outside the web space)
+        pwd_len = len(config.app['pwd']) # the absolute part of the working directory (aka - outside the web space)
         result['exports'][label] = []
         if 'js' in result['formats']:
-            with open("%s/%s_%s.js" % (config['app']['export'], label, data_hash), "w") as f:
+            with open("%s/%s_%s.js" % (config.app['export'], label, self.export_basename), "w") as f:
                 cadquery.exporters.exportShape(p, 'TJS', f)
-                result['exports'][label].append({'name':'js', 'url':'%s/%s_%s.js' % (config['app']['export'][pwd_len:], label, data_hash)})
+                result['exports'][label].append({'name':'js', 'url':'%s/%s_%s.js' % (config.app['export'][pwd_len:], label, self.export_basename)})
                 log.info("Exported 'JS'")
         if 'brp' in result['formats']:
-            Part.export(doc.Objects, "%s/%s_%s.brp" % (config['app']['export'], label, data_hash))
-            result['exports'][label].append({'name':'brp', 'url':'%s/%s_%s.brp' % (config['app']['export'][pwd_len:], label, data_hash)})
+            Part.export(doc.Objects, "%s/%s_%s.brp" % (config.app['export'], label, self.export_basename))
+            result['exports'][label].append({'name':'brp', 'url':'%s/%s_%s.brp' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'BRP'")
         if 'stp' in result['formats']:
-            Part.export(doc.Objects, "%s/%s_%s.stp" % (config['app']['export'], label, data_hash))
-            result['exports'][label].append({'name':'stp', 'url':'%s/%s_%s.stp' % (config['app']['export'][pwd_len:], label, data_hash)})
+            Part.export(doc.Objects, "%s/%s_%s.stp" % (config.app['export'], label, self.export_basename))
+            result['exports'][label].append({'name':'stp', 'url':'%s/%s_%s.stp' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'STP'")
         if 'stl' in result['formats']:
-            Mesh.export(doc.Objects, "%s/%s_%s.stl" % (config['app']['export'], label, data_hash))
-            result['exports'][label].append({'name':'stl', 'url':'%s/%s_%s.stl' % (config['app']['export'][pwd_len:], label, data_hash)})
+            Mesh.export(doc.Objects, "%s/%s_%s.stl" % (config.app['export'], label, self.export_basename))
+            result['exports'][label].append({'name':'stl', 'url':'%s/%s_%s.stl' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'STL'")
         if 'dxf' in result['formats']:
-            importDXF.export(doc.Objects, "%s/%s_%s.dxf" % (config['app']['export'], label, data_hash))
-            result['exports'][label].append({'name':'dxf', 'url':'%s/%s_%s.dxf' % (config['app']['export'][pwd_len:], label, data_hash)})
+            importDXF.export(doc.Objects, "%s/%s_%s.dxf" % (config.app['export'], label, self.export_basename))
+            result['exports'][label].append({'name':'dxf', 'url':'%s/%s_%s.dxf' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'DXF'")
         if 'svg' in result['formats']:
-            importSVG.export(doc.Objects, "%s/%s_%s.svg" % (config['app']['export'], label, data_hash))
-            result['exports'][label].append({'name':'svg', 'url':'%s/%s_%s.svg' % (config['app']['export'][pwd_len:], label, data_hash)})
+            importSVG.export(doc.Objects, "%s/%s_%s.svg" % (config.app['export'], label, self.export_basename))
+            result['exports'][label].append({'name':'svg', 'url':'%s/%s_%s.svg' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'SVG'")
         if 'json' in result['formats'] and label == SWITCH_LAYER:
-            with open("%s/%s_%s.json" % (config['app']['export'], label, data_hash), 'w') as json_file:
+            with open("%s/%s_%s.json" % (config.app['export'], label, self.export_basename), 'w') as json_file:
                 json_file.write(repr(self))
-            result['exports'][label].append({'name':'json', 'url':'%s/%s_%s.json' % (config['app']['export'][pwd_len:], label, data_hash)})
+            result['exports'][label].append({'name':'json', 'url':'%s/%s_%s.json' % (config.app['export'][pwd_len:], label, self.export_basename)})
             log.info("Exported 'JSON'")
         # remove all the documents from the view before we move on
         for o in doc.Objects:
@@ -875,17 +940,17 @@ class Plate(object):
 
 
 # take the input from the webserver and instantiate and draw the plate
-def build(data_hash, data, config):
+def build(data):
     # create the result object
     p = Plate(**data)
     result = {
         'has_layers': len(p.layers) > 1,
         'plates': p.layers,
-        'formats': p.formats,
+        'formats': config.app['formats'],
         'exports': p.exports
     }
-    result = p.draw(result, data_hash, config) # draw the plate
-    log.info("Finished drawing: %s" % (data_hash))
+    result = p.draw(result)
+    log.info("Finished drawing: %s", data['export_basename'])
     return result # return the metadata result to the webserver
 
 

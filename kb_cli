@@ -11,7 +11,7 @@ import hjson
 import logging
 import sys
 from time import time
-from config import config
+import config
 
 
 logging.basicConfig()
@@ -26,8 +26,9 @@ parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
 parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
 parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
-parser.add_argument('--usb-inner-width', default=10, type=float, help='Default width for the USB connector cutout closest to the PCB')
-parser.add_argument('--usb-outer-width', default=14, type=float, help='Default width for the USB connector cutout furthest from the PCB')
+parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB')
+parser.add_argument('--usb-outer-width', default=14, type=float, help='Width for the USB connector cutout furthest from the PCB')
+parser.add_argument('--usb-height', default=7.5, type=float, help='How far down the bottom plate to cut to allow for the USB connector.')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
@@ -39,6 +40,7 @@ parser.add_argument('--corner-type', default='round', type=str, help='What kind 
 parser.add_argument('--thickness', default=0, type=float, help='Plate thickness, 0 to disable (Default: 0)')
 parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (Default: 0)')
 parser.add_argument('--add-format', default=[], action='append', help='Add a format to be exported (brp, stp, stl)')
+parser.add_argument('--output-dir', type=str, help='What directory to output files to (Default: %s)' % config.app['export'])
 args = parser.parse_args()
 
 # Make sure the corners are specified correctly
@@ -106,7 +108,11 @@ if args.hole:
 
 # Determine what formats to support
 for format in args.add_format:
-    config['app']['formats'].append(format)
+    config.app['formats'].append(format)
+
+# Set our output directory
+if args.output_dir:
+    config.app['export'] = args.output_dir
 
 # MAIN
 if __name__ == '__main__':
@@ -136,9 +142,20 @@ if __name__ == '__main__':
         'reinforcing': args.reinforcing,
         'usb_inner_width': args.usb_inner_width,
         'usb_outer_width': args.usb_outer_width,
+        'usb_height': args.usb_height,
         'usb_offset': args.usb_offset,
         'keyboard_layout': layout,
     }
+
+    # Figure out the export file name
+    if args.name:
+        export_basename = args.name
+    elif args.file:
+        export_basename = args.file
+    else:
+        export_basename = hjson.dumps(data, sort_keys=True)
+        export_basename = hashlib.sha1(export_basename).hexdigest()
+    data['export_basename'] = export_basename
 
     # Remove default options
     if args.case == '':
@@ -164,19 +181,11 @@ if __name__ == '__main__':
     if holes:
         data['holes'] = holes
 
-    # Figure out the file name
-    if args.name:
-        data_hash = args.name
-    elif args.file:
-        data_hash = args.file
-    else:
-        data_hash = hjson.dumps(data, sort_keys=True)
-        data_hash = hashlib.sha1(data_hash).hexdigest()
-
+    # Build the plate
     build_start = time()
-    logging.info("Processing %s", (data_hash))
-    cad = builder.build(data_hash, data, config)
-    logging.info("Finished %s", (data_hash))
+    logging.info("Processing %s", (data['export_basename']))
+    cad = builder.build(data)
+    logging.info("Finished %s", (data['export_basename']))
     logging.info("Processing took {0:.2f} seconds".format(time()-build_start))
 
     # Display info about the plates
