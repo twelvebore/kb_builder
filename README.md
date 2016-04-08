@@ -25,8 +25,8 @@ $ sudo apt-get install software-properties-common
 $ sudo add-apt-repository ppa:freecad-maintainers/freecad-daily
 $ sudo apt-get update
 $ sudo apt-get upgrade
-$ sudo apt-get -y install unzip build-essential freecad git python-pip python-dev
-$ sudo pip install tornado cadquery hjson
+$ sudo apt-get -y install unzip build-essential freecad git python-pip python-dev python-flask
+$ sudo pip install cadquery hjson
 ```
 
 ### Install the Draft-dxf-importer
@@ -61,7 +61,7 @@ browser, or the CLI in Terminal.
 
 ```
 $ cd ~/kb_builder
-$ sudo ./kb_builder.py
+$ ./kb_web
 ```
 
 #### Accessing the UI

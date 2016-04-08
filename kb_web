@@ -1,0 +1,108 @@
+#!/usr/bin/env python
+
+# kb_builder builts keyboard plate and case CAD files using JSON input.
+#
+# Copyright (C) 2015  Will Stevens (swill)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+import re
+
+import builder
+import hashlib
+import json
+import logging
+import subprocess
+import time
+from flask import Flask, jsonify, render_template, request
+
+import config
+
+# Setup the web config
+config.app['formats'].append('json')
+config.app['formats'].append('js')
+
+# Setup Flask
+DEBUG = True
+SECRET_KEY = 'development key'
+app = Flask(__name__)
+app.config.from_object(__name__)
+
+
+## Helpers
+def render_page(page_name, **args):
+    """Render a page.
+    """
+    return render_template('%s.html' % page_name, enumerate=enumerate, len=len, sorted=sorted, **args)
+
+
+@app.route('/', methods=['GET'])
+def root_get():
+    """Returns the front page.
+    """
+    return render_page('index')
+
+@app.route('/', methods=['POST'])
+def root_post():
+    data = json.loads(request.get_data())
+    data_hash = hashlib.sha1(json.dumps(data, sort_keys=True)).hexdigest()
+
+    builder_args = {
+        'export_basename': data_hash,
+        'switch_type': int(data.get('switch-type')),
+        'stab_type': int(data.get('stab-type')),
+        'case_type': data.get('case-type'),
+        'mount_holes_num': int(data.get('mount-holes-num', 0)),
+        'mount_holes_size': float(data.get('mount-holes-size', 4)),
+        'width_padding': float(data.get('width-padding', 0)),
+        'height_padding': float(data.get('height-padding', 0)),
+        'pcb_width_padding': 0, # FIXME: Add to HTML form
+        'pcb_height_padding': 0, # FIXME: Add to HTML form
+        'corners': float(data.get('fillet', 0)),
+        'corner_type': 0, # FIXME: Add ability to specify 1 for beveled
+        'thickness': float(data.get('thickness', 1.5)),
+        'kerf': float(data.get('kerf', 0)),
+        'reinforcing': False, # FIXME: Add ability to toggle this on
+        'usb_inner_width': 10,
+        'usb_outer_width': 15,
+        'usb_height': 10,
+        'usb_offset': 0,
+        'keyboard_layout': data.get('layout', ''),
+        'oversize': [], # FIXME: Add ability to specify this
+        'oversize_distance': 2 # FIXME: Add ability to specify this
+    }
+
+    build_start = time.time()
+    logging.info("Processing: %s" % (data_hash))
+    cad = builder.build(builder_args)
+    logging.info("Finished: %s" % (data_hash))
+    logging.info("Processing took: {0:.2f} seconds".format(time.time()-build_start))
+
+    return jsonify(cad)
+
+
+if __name__ == '__main__':
+    # Determine what our IP is
+    p = subprocess.Popen(["ifconfig"], stdout=subprocess.PIPE)
+    ifc_resp = p.communicate()
+    patt = re.compile(r'inet\s*\w*\S*:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
+    resp = patt.findall(ifc_resp[0])
+    resp.remove('127.0.0.1')
+    print
+    for ip in resp:
+        print 'Try connecting to: http://%s:%s/' % (ip, config.app['port'])
+        print
+    print
+
+    # Start the server
+    app.run(host=config.app['host'], port=config.app['port'], debug=True)

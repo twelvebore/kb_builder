@@ -22,7 +22,8 @@ import sys
 pwd = os.path.dirname(__file__)
 
 app = {
-    'port': 80,
+    'host': '0.0.0.0',
+    'port': 8080,
     'pwd': pwd,
     'static': os.path.join(pwd, 'static'),
     'export': os.path.join(pwd, 'static', 'exports'),

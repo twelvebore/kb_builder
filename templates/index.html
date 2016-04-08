@@ -3,19 +3,23 @@
   <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
     <title>Plate & Case Builder</title>
-    <link rel="stylesheet" type="text/css" href="{{ static_url('plugins/jquery-ui-1.11.2.custom/jquery-ui.min.css') }}">
-    <link rel="stylesheet" type="text/css" href="{{ static_url('plugins/jquery-ui-1.11.2.custom/jquery-ui.structure.min.css') }}">
-    <link rel="stylesheet" type="text/css" href="{{ static_url('plugins/jquery-ui-1.11.2.custom/jquery-ui.theme.min.css') }}">
-    <link rel="stylesheet" type="text/css" href="{{ static_url('css/iphone-toggle.css') }}">
-    <link rel="stylesheet" type="text/css" href="{{ static_url('css/style.css') }}">
-    <script type="text/javascript" src="{{ static_url('js/three.min.js') }}"></script>
-    <script type="text/javascript" src="{{ static_url('js/OrbitControls.js') }}"></script>
-    <script type="text/javascript" src="{{ static_url('js/json2.js') }}"></script>
-    <script type="text/javascript" src="{{ static_url('js/jsonl.min.js') }}"></script>
-    <script type="text/javascript" src="{{ static_url('plugins/jquery-ui-1.11.2.custom/external/jquery/jquery.js') }}"></script>
-    <script type="text/javascript" src="{{ static_url('plugins/jquery-ui-1.11.2.custom/jquery-ui.min.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="/static/plugins/jquery-ui-1.11.2.custom/jquery-ui.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/plugins/jquery-ui-1.11.2.custom/jquery-ui.structure.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/plugins/jquery-ui-1.11.2.custom/jquery-ui.theme.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/iphone-toggle.css">
+    <link rel="stylesheet" type="text/css" href="/static/css/style.css">
+    <script type="text/javascript" src="/static/js/three.min.js"></script>
+    <script type="text/javascript" src="/static/js/OrbitControls.js"></script>
+    <script type="text/javascript" src="/static/js/json2.js"></script>
+    <script type="text/javascript" src="/static/js/jsonl.min.js"></script>
+    <script type="text/javascript" src="/static/plugins/jquery-ui-1.11.2.custom/external/jquery/jquery.js"></script>
+    <script type="text/javascript" src="/static/plugins/jquery-ui-1.11.2.custom/jquery-ui.min.js"></script>
     <script type="text/javascript">
       var cad = {};
+
+      String.prototype.toProperCase = function () {
+        return this.replace(/\w\S*/g, function(txt){return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();});
+      };
 
       $(function() {
         $('#accordion').accordion({
@@ -289,7 +293,7 @@
                     var label = res['plates'][p];
                     var id = label+'-layer-canvas';
                     var cad_js;
-                    $('#plate-draw-section').append('<div id="'+id+'-wrapper" class="canvas-wrapper"><div id="'+id+'" class="canvas" style="width:'+width+'px; height:'+height+'px;"></div><div class="button-wrapper"></div></div>');
+                    $('#plate-draw-section').append('<div id="'+id+'-wrapper" class="canvas-wrapper"><div id="'+id+'-title"><h1 style="text-align: center;">'+label.toProperCase()+' Layer</h1></div><div id="'+id+'" class="canvas" style="width:'+width+'px; height:'+height+'px;"></div><div class="button-wrapper"></div></div>');
                     if (res['exports'][label].length > 1) {
                       $('#plate-draw-section #'+id+'-wrapper .button-wrapper').append('Download: ');
                       for (var i=0; i<res['exports'][label].length; i++) {
@@ -397,13 +401,10 @@
       </div>
       <div id="content">
         <div class="section-header">
-          <img src="{{ static_url('images/swillkb_logo.png') }}" /><br />
+          <img src="/static/images/swillkb_logo.png" /><br />
           Plate & Case Builder
         </div>
         Generate the CAD files required to build a keyboard with any layout you specify...
-        <div class="disclaimer ui-state-highlight ui-corner-all">
-          <span class="ui-icon ui-icon-inline ui-icon-alert"></span><b>Disclaimer:</b> I have not had a chance to test these cutouts yet, so use at your own risk until I remove this disclaimer.
-        </div>
         <div id="accordion">
           <h3>Configure the CAD to draw</h3>
           <div id="plate-config-section" class="section">
@@ -437,28 +438,29 @@
                   <li style="margin-bottom:0 !important;">
                     <span class="label">Switch Type</span>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="0" /><img src="{{ static_url('images/switch_type_0.png') }}">
+                      <input type="radio" name="switch-type" value="0" /><img src="/static/images/switch_type_0.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="1" checked="checked" /><img src="{{ static_url('images/switch_type_1.png') }}">
+                      <input type="radio" name="switch-type" value="1" checked="checked" /><img src="/static/images/switch_type_1.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="2" /><img src="{{ static_url('images/switch_type_2.png') }}">
+                      <input type="radio" name="switch-type" value="2" /><img src="/static/images/switch_type_2.png">
                     </label>
-                    <!--<label class="radio-label">
-                      <input type="radio" name="switch-type" value="3" /><img src="{{ static_url('images/switch_type_3.png') }}">
-                    </label>-->
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="4" /><img src="{{ static_url('images/switch_type_0.png') }}">
+                      <input type="radio" name="switch-type" value="3" /><img src="/static/images/switch_type_3.png">
+                    </label>
+                    <label class="radio-label">
+                      <input type="radio" name="switch-type" value="4" /><img src="/static/images/switch_type_4.png">
                     </label>
                     <span data-id="switch-type-help" class="help">&nbsp;</span>
                     <div id="switch-type-help" class="help-dialog" title="Switch Type Help">
                       You have 3 different switch cutouts which you can choose from.  Keep in mind that the more complex the cutout, the more expensive the plate will be to cut.  I would strongly recommend the second option unless you have a reason not to choose it because it is affordable and both Cherry MX and Alps compatible and the MX switches can be opened.<br />
                       <ul class="unstyle">
-                        <li><img src="{{ static_url('images/switch_type_0.png') }}" style="float:left;"> This is the standard cutout used by all non-custom keyboards.  This layout is the most inexpensive to cut, but also does not allow you open the switches without desoldering.  If you are hand wiring a keyboard, this switch opening may be good enough for you since you can unclip the switch from the plate without desoldering.</li>
-                        <li><img src="{{ static_url('images/switch_type_1.png') }}" style="float:left;"> This is the default and recommended switch cutout.  It balances features with affordability since it is less expensive to cut than any of the other openable cutouts.  This opening allows for MX switches to be opened without desoldering and is also Alps compatible.</li>
-                        <li><img src="{{ static_url('images/switch_type_2.png') }}" style="float:left;"> This is the standard H cutout which allows for MX switches to be opened.  This cutout is fine, but you will pay more to get a plate cut with this opening than the previous option.</li>
-                        <!--<li><img src="{{ static_url('images/switch_type_3.png') }}" style="float:left;"> This switch opening is not recommended.  I have added it so you have the option, but it has a couple problems.  This opening will cost about 3 times as much as the basic switch opening.  There are reports that the switches do not clip into this opening securely.  The only reason you would choose this opening is if you need to rotate a switch 90 degrees.</li>-->
+                        <li><img src="/static/images/switch_type_0.png" style="float:left;"> This is the standard cutout used by all non-custom keyboards.  This layout is the most inexpensive to cut, but also does not allow you open the switches without desoldering.  If you are hand wiring a keyboard, this switch opening may be good enough for you since you can unclip the switch from the plate without desoldering.</li>
+                        <li><img src="/static/images/switch_type_1.png" style="float:left;"> This is the default and recommended switch cutout.  It balances features with affordability since it is less expensive to cut than any of the other openable cutouts.  This opening allows for MX switches to be opened without desoldering and is also Alps compatible.</li>
+                        <li><img src="/static/images/switch_type_2.png" style="float:left;"> This is the standard H cutout which allows for MX switches to be opened.  This cutout is fine, but you will pay more to get a plate cut with this opening than the previous option.</li>
+                        <li><img src="/static/images/switch_type_3.png" style="float:left;"> This switch opening is not recommended. I have added it so you have the option, but it has a couple problems.  This opening will cost about 3 times as much as the basic switch opening.  There are reports that the switches do not clip into this opening securely.  The only reason you would choose this opening is if you need to rotate a switch 90 degrees.</li>
+                        <li><img src="/static/images/switch_type_4.png" style="float:left;"> This is the standard cutout used by all Alps keyboards. If you plan to use Alps or Matias switches this is the recommended cutout.</li>
                       </ul>
                     </div>
                   </li>
@@ -469,15 +471,19 @@
                         <option value="0" selected>Cherry + Costar</option>
                         <option value="1">Cherry Only</option>
                         <option value="2">Costar Only</option>
+                        <option value="3">Matias</option>
+                        <option value="4">Alps</option>
                       </select>
                     </span>
                     <span data-id="stab-type-help" class="help">&nbsp;</span>
                     <div id="stab-type-help" class="help-dialog" title="Stabilizer Type Help">
-                      This section lets you pick which types of stabilizer cutouts you would like cut in the plate.  For the most flexibility you will probably want to pick the 'Cherry + Costar' option. However, if you know you only want to use Costar stabilizers and you want to reduce machining costs, the 'Costar Only' option is a good choice.<br />
+                      This section lets you pick which types of stabilizer cutouts you would like cut in the plate.  For the most flexibility you will probably want to pick the 'Cherry + Costar' option. However, if you know you only want to use Costar stabilizers and you want to reduce machining costs, the 'Costar Only' option is a good choice. If you are using Alps or Matias switches, you should pick one of those two stabilizer options.<br />
                       <ul>
                         <li><b>Cherry + Costar</b> - A stabilizer cutout which supports; Cherry PCB Mount, Cherry Plate Mount and Costar stabilizers.</li>
                         <li><b>Cherry Only</b> - A stabilizer cutout which only supports Cherry stabilizers.</li>
                         <li><b>Costar Only</b> - A stabilizer cutout which only supports Costar stabilizers.</li>
+                        <li><b>Matias Style</b> - Alps style stabilizer for 2U, Costar for spacebars.</li>
+                        <li><b>Alps Style</b> - Alps style stabilizers on all 2U and larger switches.</li>
                       </ul>
                     </div>
                   </li>
@@ -497,7 +503,7 @@
                         <li><b>None</b> - This option will not have any mount holes.  I don't think this would ever be used unless you are sandwiching it in a case somehow and it 'sets into' the case and is firmly fixed some other way.</li>
                         <li><b>Poker (60%)</b> - This case option allows you to use a PCB and mount the plate in a Poker case.  This layout is based on the GH60 PCB drawings.  The holes are currently hard coded to a 5mm diameter.  The holes are designed to let the screws pass through the plate and only let the PCB hold everything to the plate.  If you are hand wiring, you need the Sandwich case.</li>
                         <li><b>Sandwich</b> - This is a standard layered case.  The plate goes on the top and then there are essentially ring layers and then a bottom plate.  There are two types of ring layers; 'open' which has a cutout for the USB connector, and 'closed' which has no cutouts.  You can choose how many of each layer is suitable for your case.<br />
-                        This case type will actually produce the CAD files for <b>all</b> the layers of the sandwich case.  You will be able to choose how many of each layer you want cut and build the case completely from the output of this tool.</li>
+                        This case type will actually produce the CAD files for <b>all</b> the layers of the sandwich case, plus options for what style bottom plate you want.  You will be able to choose how many of each layer you want cut and build the case completely from the output of this tool.</li>
                       </ul>
                     </div>
                   </li>
@@ -598,9 +604,6 @@
           <div id="plate-draw-section" class="section full-width"></div>
         </div>
 
-        <div class="shoutouts ui-state-highlight ui-corner-all">
-          I want to give a big shout-out to <a href="https://www.bigbluesaw.com/" target="_blank">Big Blue Saw</a>.&nbsp;&nbsp;They have adapted their <a href="https://www.bigbluesaw.com/faqs/parts/how-does-waterjet-cutting-work.html" target="_blank">waterjet cutting</a> service to best fit our needs.
-        </div>
       </div>
     </div>
   </body>

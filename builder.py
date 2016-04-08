@@ -614,8 +614,6 @@ class Plate(object):
         elif (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
             if s == 0:
                 # modified mx cherry spec 2u stabilizer to support costar
-                print '2u stab points:'
-                print '\n'.join(map(str, points))
                 points = [
                     (mx_width-k,-mx_height+k),
                     (mx_width-k,-mx_stab_inside_y+k),
