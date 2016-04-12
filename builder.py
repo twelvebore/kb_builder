@@ -19,15 +19,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import json
 import logging
-
 import math
-import os
-import sys
 
 import config
 
 log = logging.getLogger()
-
 
 import FreeCAD
 import cadquery
@@ -44,8 +40,16 @@ SIMPLE_LAYER = 'simple'
 CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
+
 class Plate(object):
-    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type='round', width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type='cherry', corners=0, switch_type='mx', usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False, oversize=[], oversize_distance=4):
+    def __init__(self, keyboard_layout, export_basename, kerf=0.0,
+                 case_type=None, corner_type='round', width_padding=0,
+                 height_padding=0, usb_inner_width=10, usb_outer_width=10,
+                 usb_height=7.5, stab_type='cherry', corners=0,
+                 switch_type='mx', usb_offset=0, pcb_height_padding=0,
+                 pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
+                 thickness=1.5, holes=None, reinforcing=False, oversize=None,
+                 oversize_distance=4):
         # User settable things
         self.export_basename = export_basename
         self.case = {'type': case_type}
@@ -54,7 +58,7 @@ class Plate(object):
         self.kerf = kerf / 2
         self.keyboard_layout = keyboard_layout
         self.holes = holes if holes else []
-        self.oversize = oversize
+        self.oversize = oversize if oversize else []
         self.oversize_distance = oversize_distance
         self.stab_type = stab_type
         self.switch_type = switch_type
@@ -92,17 +96,18 @@ class Plate(object):
         # Constants
         self.u1 = 19.05
         self.stabs = {
-            "300":  (19.05, 0),       # 3 unit
-            "400":  (28.575, 0),      # 4 unit
-            "450":  (34.671, 0),      # 4.5 unit
-            "550":  (42.8625, 0),     # 5.5 unit
-            "600":  (47.625, 9.525),  # 6 unit
-            "625":  (50, 0),          # 6.25 unit
-            "650":  (52.38, 0),       # 6.5 unit
-            "700":  (57.15, 0),       # 7 unit
-            "800":  (66.675, 0),      # 8 unit
-            "900":  (66.675, 0),      # 9 unit
-            "1000": (66.675, 0)       # 10 unit
+            2: (11.95, 0),       # 2 unit
+            3: (19.05, 0),       # 3 unit
+            4: (28.575, 0),      # 4 unit
+            4.5: (34.671, 0),      # 4.5 unit
+            5.5: (42.8625, 0),     # 5.5 unit
+            6: (47.625, 9.525),  # 6 unit
+            6.25: (50, 0),          # 6.25 unit
+            6.5: (52.38, 0),       # 6.5 unit
+            7: (57.15, 0),       # 7 unit
+            8: (66.675, 0),      # 8 unit
+            9: (66.675, 0),      # 9 unit
+            10: (66.675, 0)       # 10 unit
         }
 
         # Initialize the case
@@ -402,9 +407,9 @@ class Plate(object):
 
         return p
 
-
-    # since the sandwich plate has a dynamic number of holes, determine where the specified holes should be placed
     def layout_sandwich_holes(self):
+        """Determine where screw holes should be placed.
+        """
         if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
             holes = int(self.case['holes'])
             if holes % 2 == 0 and holes >= 4: # holes needs to be even and the first 4 are put in the corners
@@ -426,24 +431,29 @@ class Plate(object):
                 self.case['x_holes'] = _x
                 self.case['y_holes'] = _y
 
+    def rotate_points(self, points, radians, rotate_point):
+        """Rotate a sequence of points.
 
-    # take a set of points and rotate them 'r' degrees around 'a'
-    def rotate_points(self, points, r, a):
-        result = []
-        for p in points:
-            px = math.cos(math.radians(r)) * (p[0]-a[0]) - math.sin(math.radians(r)) * (p[1]-a[1]) + a[0]
-            py = math.sin(math.radians(r)) * (p[0]-a[0]) + math.cos(math.radians(r)) * (p[1]-a[1]) + a[1]
-            result.append((px,py))
-        return result
+        points: the points to rotate
 
+        radians: the number of degrees to rotate
 
-    # cut a switch opening with center 'c' defined by the 'key'
-    def cut_switch(self, p, c, key=None, layer=SWITCH_LAYER):
+        rotate_point: the coordinate to rotate around
+        """
+        def calculate_points(point):
+            return (
+                math.cos(math.radians(radians)) * (point[0]-rotate_point[0]) - math.sin(math.radians(radians)) * (point[1]-rotate_point[1]) + rotate_point[0],
+                math.sin(math.radians(radians)) * (point[0]-rotate_point[0]) + math.cos(math.radians(radians)) * (point[1]-rotate_point[1]) + rotate_point[1]
+            )
+
+        return map(calculate_points, points)
+
+    def cut_switch(self, plate, switch_coord, key=None, layer=SWITCH_LAYER):
         """Cut a switch opening
 
-        p: The plate object
+        plate: The plate object
 
-        c: Center of the switch
+        switch_coord: Center of the switch
 
         key: A dictionary describing this key, if not provided a 1u key at 0,0 will be used.
 
@@ -452,18 +462,18 @@ class Plate(object):
         if not key:
             key = {}
 
-        w = key['w'] if 'w' in key else 1
-        h = key['h'] if 'h' in key else 1
+        width = int(key['w']) if 'w' in key else 1
+        height = int(key['h']) if 'h' in key else 1
         switch_type = key['_t'] if '_t' in key else self.switch_type
         stab_type = key['_s'] if '_s' in key else self.stab_type
-        k = key['_k']/2 if '_k' in key else self.kerf
-        r = key['_r'] if '_r' in key else None
-        rs = key['_rs'] if '_rs' in key else None
-        offset = 0
+        kerf = key['_k']/2 if '_k' in key else self.kerf
+        rotate_key = key['_r'] if '_r' in key else None
+        rotate_stab = key['_rs'] if '_rs' in key else None
+        center_offset = key['_co'] if '_co' in key else False
 
         # cut switch cutout
         rotate = None
-        if 'h' in key and h > w:
+        if 'h' in key and height > width:
             rotate = True
         points = []
 
@@ -495,17 +505,17 @@ class Plate(object):
         stab_cherry_outside_x = 4.2
         alps_stab_top_y = 4
         alps_stab_bottom_y = 9
-        alps_stab_inside_x = 16.7 if w == 2.75 else 12.7
+        alps_stab_inside_x = 16.7 if width == 2.75 else 12.7
         alps_stab_ouside_x = alps_stab_inside_x + 2.7
 
         if layer is TOP_LAYER:
             # Cut out openings the size of keycaps
             switch_type = 'mx'
             stab_type = 'cherry'
-            if h > 1:
-                mx_width = ((self.u1/2) * h) + 0.5
+            if height > 1:
+                mx_width = ((self.u1/2) * height) + 0.5
             else:
-                mx_width = ((self.u1/2) * w) + 0.5
+                mx_width = ((self.u1/2) * width) + 0.5
             mx_height = (self.u1/2) + 0.5
         elif layer is REINFORCING_LAYER:
             offset = 1
@@ -534,354 +544,399 @@ class Plate(object):
             alps_stab_ouside_x += offset
 
         # Figure out our stabs now in case the switch itself is offset.
-        l = w
+        length = width
         if rotate:
-            l = h
-        x, center_offset = (11.95, 0)  # default to a 2unit stabilizer if not found...
-        stab_size = '%s' % (str(l).replace('.', '').ljust(3, '0') if l < 10 else str(l).replace('.', '').ljust(4, '0'))
-        if stab_size in self.stabs:
-            x, center_offset = self.stabs[stab_size]
+            length = height
+
+        if length >= 2:
+            x = self.stabs[length][0] if length in self.stabs else self.stabs[2][0]
+            if not center_offset:
+                center_offset = self.stabs[length][1] if length in self.stabs else self.stabs[2][1]
 
         if center_offset > 0:
-            # Move to cut the offset switch hole
-            p = p.center(center_offset, 0)
+            # If the user has specified an offset stab (EG, 6U) we first move
+            # to cut the offset switch hole, and later will move back to cut
+            # the stabilizer.
+            plate = plate.center(center_offset, 0)
 
-        if switch_type == 'mx': # standard square switch
+        if switch_type == 'mx':
             points = [
-                (mx_width-k+self.grow_x,-mx_height+k-self.grow_y), (mx_width-k+self.grow_x,mx_height-k+self.grow_y),
-                (-mx_width+k-self.grow_x,mx_height-k+self.grow_y), (-mx_width+k-self.grow_x,-mx_height+k-self.grow_y),
-                (mx_width-k+self.grow_x,-mx_height+k-self.grow_y)
+                (mx_width-kerf+self.grow_x,-mx_height+kerf-self.grow_y),
+                (mx_width-kerf+self.grow_x,mx_height-kerf+self.grow_y),
+                (-mx_width+kerf-self.grow_x,mx_height-kerf+self.grow_y),
+                (-mx_width+kerf-self.grow_x,-mx_height+kerf-self.grow_y),
+                (mx_width-kerf+self.grow_x,-mx_height+kerf-self.grow_y)
             ]
-        elif switch_type == 'alpsmx': # mx and alps compatible switch, mx can open
+        elif switch_type == 'alpsmx':
             points = [
-                (mx_width-k,-mx_height+k), (mx_width-k,-alps_height+k), (alps_width-k,-alps_height+k),
-                (alps_width-k,alps_height-k), (mx_width-k,alps_height-k), (mx_width-k,mx_height-k),
-                (-mx_width+k,mx_height-k), (-mx_width+k,alps_height-k), (-alps_width+k,alps_height-k),
-                (-alps_width+k,-alps_height+k), (-mx_width+k,-alps_height+k), (-mx_width+k,-mx_height+k),
-                (mx_width-k,-mx_height+k)
+                (mx_width-kerf,-mx_height+kerf),
+                (mx_width-kerf,-alps_height+kerf),
+                (alps_width-kerf,-alps_height+kerf),
+                (alps_width-kerf,alps_height-kerf),
+                (mx_width-kerf,alps_height-kerf),
+                (mx_width-kerf,mx_height-kerf),
+                (-mx_width+kerf,mx_height-kerf),
+                (-mx_width+kerf,alps_height-kerf),
+                (-alps_width+kerf,alps_height-kerf),
+                (-alps_width+kerf,-alps_height+kerf),
+                (-mx_width+kerf,-alps_height+kerf),
+                (-mx_width+kerf,-mx_height+kerf),
+                (mx_width-kerf,-mx_height+kerf)
             ]
-        elif switch_type == 'mx-open': # mx switch can open (side wings)
+        elif switch_type == 'mx-open':
             points = [
-                (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
-                (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
-                (alps_width-k,wing_inside+k), (alps_width-k,wing_outside-k), (mx_width-k,wing_outside-k),
-                (mx_width-k,mx_height-k), (-mx_width+k,mx_height-k), (-mx_width+k,wing_outside-k),
-                (-alps_width+k,wing_outside-k), (-alps_width+k,wing_inside+k), (-mx_width+k,wing_inside+k),
-                (-mx_width+k,-wing_inside-k), (-alps_width+k,-wing_inside-k), (-alps_width+k,-wing_outside+k),
-                (-mx_width+k,-wing_outside+k), (-mx_width+k,-mx_height+k), (mx_width-k,-mx_height+k)
+                (mx_width-kerf,-mx_height+kerf),
+                (mx_width-kerf,-wing_outside+kerf),
+                (alps_width-kerf,-wing_outside+kerf),
+                (alps_width-kerf,-wing_inside-kerf),
+                (mx_width-kerf,-wing_inside-kerf),
+                (mx_width-kerf,wing_inside+kerf),
+                (alps_width-kerf,wing_inside+kerf),
+                (alps_width-kerf,wing_outside-kerf),
+                (mx_width-kerf,wing_outside-kerf),
+                (mx_width-kerf,mx_height-kerf),
+                (-mx_width+kerf,mx_height-kerf),
+                (-mx_width+kerf,wing_outside-kerf),
+                (-alps_width+kerf,wing_outside-kerf),
+                (-alps_width+kerf,wing_inside+kerf),
+                (-mx_width+kerf,wing_inside+kerf),
+                (-mx_width+kerf,-wing_inside-kerf),
+                (-alps_width+kerf,-wing_inside-kerf),
+                (-alps_width+kerf,-wing_outside+kerf),
+                (-mx_width+kerf,-wing_outside+kerf),
+                (-mx_width+kerf,-mx_height+kerf),
+                (mx_width-kerf,-mx_height+kerf)
             ]
-        elif switch_type == 'mx-open-rotatable': # rotatable mx switch can open both ways (side and top/bottom wings)
+        elif switch_type == 'mx-open-rotatable':
             points = [
-                (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
-                (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
-                (alps_width-k,wing_inside+k), (alps_width-k,wing_outside-k), (mx_width-k,wing_outside-k),
-                (mx_width-k,mx_height-k), (wing_outside-k,mx_height-k), (wing_outside-k,alps_width-k),
-                (wing_inside+k,alps_width-k), (wing_inside+k,mx_height-k), (-wing_inside-k,mx_height-k),
-                (-wing_inside-k,alps_width-k), (-wing_outside+k,alps_width-k), (-wing_outside+k,7-k),
-                (-mx_width+k,mx_height-k), (-mx_width+k,wing_outside-k), (-alps_width+k,wing_outside-k),
-                (-alps_width+k,wing_inside+k), (-mx_width+k,wing_inside+k), (-mx_width+k,-wing_inside-k),
-                (-alps_width+k,-wing_inside-k), (-alps_width+k,-wing_outside+k), (-mx_width+k,-wing_outside+k),
-                (-mx_width+k,-mx_height+k), (-wing_outside+k,-mx_height+k), (-wing_outside+k,-alps_width+k),
-                (-wing_inside-k,-alps_width+k), (-wing_inside-k,-mx_height+k), (wing_inside+k,-mx_height+k),
-                (wing_inside+k,-alps_width+k), (wing_outside-k,-alps_width+k), (wing_outside-k,-mx_height+k),
-                (mx_width-k,-mx_height+k)
+                (mx_width-kerf,-mx_height+kerf),
+                (mx_width-kerf,-wing_outside+kerf),
+                (alps_width-kerf,-wing_outside+kerf),
+                (alps_width-kerf,-wing_inside-kerf),
+                (mx_width-kerf,-wing_inside-kerf),
+                (mx_width-kerf,wing_inside+kerf),
+                (alps_width-kerf,wing_inside+kerf),
+                (alps_width-kerf,wing_outside-kerf),
+                (mx_width-kerf,wing_outside-kerf),
+                (mx_width-kerf,mx_height-kerf),
+                (wing_outside-kerf,mx_height-kerf),
+                (wing_outside-kerf,alps_width-kerf),
+                (wing_inside+kerf,alps_width-kerf),
+                (wing_inside+kerf,mx_height-kerf),
+                (-wing_inside-kerf,mx_height-kerf),
+                (-wing_inside-kerf,alps_width-kerf),
+                (-wing_outside+kerf,alps_width-kerf),
+                (-wing_outside+kerf,mx_height-kerf),
+                (-mx_width+kerf,mx_height-kerf),
+                (-mx_width+kerf,wing_outside-kerf),
+                (-alps_width+kerf,wing_outside-kerf),
+                (-alps_width+kerf,wing_inside+kerf),
+                (-mx_width+kerf,wing_inside+kerf),
+                (-mx_width+kerf,-wing_inside-kerf),
+                (-alps_width+kerf,-wing_inside-kerf),
+                (-alps_width+kerf,-wing_outside+kerf),
+                (-mx_width+kerf,-wing_outside+kerf),
+                (-mx_width+kerf,-mx_height+kerf),
+                (-wing_outside+kerf,-mx_height+kerf),
+                (-wing_outside+kerf,-alps_width+kerf),
+                (-wing_inside-kerf,-alps_width+kerf),
+                (-wing_inside-kerf,-mx_height+kerf),
+                (wing_inside+kerf,-mx_height+kerf),
+                (wing_inside+kerf,-alps_width+kerf),
+                (wing_outside-kerf,-alps_width+kerf),
+                (wing_outside-kerf,-mx_height+kerf),
+                (mx_width-kerf,-mx_height+kerf)
             ]
-        elif switch_type == 'alps': # alps compatible switch, not MX compatible
+        elif switch_type == 'alps':
             points = [
-                (alps_width-k,-alps_height+k),
-                (alps_width-k,alps_height-k),
-                (-alps_width+k,alps_height-k),
-                (-alps_width+k,-alps_height+k),
-                (alps_width-k,-alps_height+k),
+                (alps_width-kerf,-alps_height+kerf),
+                (alps_width-kerf,alps_height-kerf),
+                (-alps_width+kerf,alps_height-kerf),
+                (-alps_width+kerf,-alps_height+kerf),
+                (alps_width-kerf,-alps_height+kerf),
             ]
 
         if rotate:
             points = self.rotate_points(points, 90, (0,0))
-        if r:
-            points = self.rotate_points(points, r, (0,0))
+        if rotate_key:
+            points = self.rotate_points(points, rotate_key, (0,0))
 
-        p = self.center(p, c[0] ,c[1]).polyline(points).cutThruAll()
+        plate = self.center(plate, switch_coord[0], switch_coord[1]).polyline(points).cutThruAll()
 
         if center_offset > 0:
-            # Move back to the center of the key
-            p = p.center(-center_offset, 0)
+            # Move back to the center of the key/stabilizer
+            plate = plate.center(-center_offset, 0)
 
-        # cut 2 unit stabilizer cutout
+        # Cut stabilizers. We have different sections for 2U vs other sizes
+        # because cherry 2U stabs are shaped differently from larger stabs.
+        # This should be refactored for better readability.
         if layer == TOP_LAYER:
-            self.x_off += c[0]
-            return p
+            # Don't cut stabs on TOP_LAYER
+            self.x_off += switch_coord[0]
+            return plate
 
-        elif (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
+        elif (width >= 2 and width < 3) or (rotate and height >= 2 and height < 3):
+            # Cut 2 unit stabilizer cutout
             if stab_type == 'cherry-costar':
-                # modified mx cherry spec 2u stabilizer to support costar
                 points = [
-                    (mx_width-k,-mx_height+k),
-                    (mx_width-k,-mx_stab_inside_y+k),
-                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
-                    (mx_stab_inside_x+k,-stab_cherry_top_x+k),
-                    (stab_4+k,-stab_cherry_top_x+k),
-                    (stab_4+k,-stab_5+k),
-                    (stab_6-k,-stab_5+k),
-                    (stab_6-k,-stab_cherry_top_x+k),
-                    (mx_stab_outside_x-k,-stab_cherry_top_x+k),
-                    (mx_stab_outside_x-k,-stab_y_wire+k),
-                    (stab_9-k,-stab_y_wire+k),
-                    (stab_9-k,stab_cherry_wing_bottom_x-k),
-                    (mx_stab_outside_x-k,stab_cherry_wing_bottom_x-k),
-                    (mx_stab_outside_x-k,stab_cherry_bottom_x-k),
-                    (stab_6-k,stab_cherry_bottom_x-k),
-                    (stab_6-k,stab_12-k),
-                    (stab_4+k,stab_12-k),
-                    (stab_4+k,stab_cherry_bottom_x-k),
-                    (mx_stab_inside_x+k,stab_cherry_bottom_x-k),
-                    (mx_stab_inside_x+k,stab_13-k),
-                    (mx_width-k,stab_13-k),
-                    (mx_width-k,mx_height-k),
-                    (-mx_width+k,mx_height-k),
-                    (-mx_width+k,stab_13-k),
-                    (-mx_stab_inside_x-k,stab_13-k),
-                    (-mx_stab_inside_x-k,stab_cherry_bottom_x-k),
-                    (-stab_4-k,stab_cherry_bottom_x-k),
-                    (-stab_4-k,stab_12-k),
-                    (-stab_6+k,stab_12-k),
-                    (-stab_6+k,stab_cherry_bottom_x-k),
-                    (-mx_stab_outside_x+k,stab_cherry_bottom_x-k),
-                    (-mx_stab_outside_x+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,-stab_y_wire+k),
-                    (-mx_stab_outside_x+k,-stab_y_wire+k),
-                    (-mx_stab_outside_x+k,-stab_cherry_top_x+k),
-                    (-stab_6+k,-stab_cherry_top_x+k),
-                    (-stab_6+k,-stab_5+k),
-                    (-stab_4-k,-stab_5+k),
-                    (-stab_4-k,-stab_cherry_top_x+k),
-                    (-mx_stab_inside_x-k,-stab_cherry_top_x+k),
-                    (-mx_stab_inside_x-k,-mx_stab_inside_y+k),
-                    (-mx_width+k,-mx_stab_inside_y+k),
-                    (-mx_width+k,-mx_height+k),
-                    (mx_width-k,-mx_height+k)
+                    (mx_width-kerf,-mx_height+kerf),
+                    (mx_width-kerf,-mx_stab_inside_y+kerf),
+                    (mx_stab_inside_x+kerf,-mx_stab_inside_y+kerf),
+                    (mx_stab_inside_x+kerf,-stab_cherry_top_x+kerf),
+                    (stab_4+kerf,-stab_cherry_top_x+kerf),
+                    (stab_4+kerf,-stab_5+kerf),
+                    (stab_6-kerf,-stab_5+kerf),
+                    (stab_6-kerf,-stab_cherry_top_x+kerf),
+                    (mx_stab_outside_x-kerf,-stab_cherry_top_x+kerf),
+                    (mx_stab_outside_x-kerf,-stab_y_wire+kerf),
+                    (stab_9-kerf,-stab_y_wire+kerf),
+                    (stab_9-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (mx_stab_outside_x-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (mx_stab_outside_x-kerf,stab_cherry_bottom_x-kerf),
+                    (stab_6-kerf,stab_cherry_bottom_x-kerf),
+                    (stab_6-kerf,stab_12-kerf),
+                    (stab_4+kerf,stab_12-kerf),
+                    (stab_4+kerf,stab_cherry_bottom_x-kerf),
+                    (mx_stab_inside_x+kerf,stab_cherry_bottom_x-kerf),
+                    (mx_stab_inside_x+kerf,stab_13-kerf),
+                    (mx_width-kerf,stab_13-kerf),
+                    (mx_width-kerf,mx_height-kerf),
+                    (-mx_width+kerf,mx_height-kerf),
+                    (-mx_width+kerf,stab_13-kerf),
+                    (-mx_stab_inside_x-kerf,stab_13-kerf),
+                    (-mx_stab_inside_x-kerf,stab_cherry_bottom_x-kerf),
+                    (-stab_4-kerf,stab_cherry_bottom_x-kerf),
+                    (-stab_4-kerf,stab_12-kerf),
+                    (-stab_6+kerf,stab_12-kerf),
+                    (-stab_6+kerf,stab_cherry_bottom_x-kerf),
+                    (-mx_stab_outside_x+kerf,stab_cherry_bottom_x-kerf),
+                    (-mx_stab_outside_x+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-stab_9+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-stab_9+kerf,-stab_y_wire+kerf),
+                    (-mx_stab_outside_x+kerf,-stab_y_wire+kerf),
+                    (-mx_stab_outside_x+kerf,-stab_cherry_top_x+kerf),
+                    (-stab_6+kerf,-stab_cherry_top_x+kerf),
+                    (-stab_6+kerf,-stab_5+kerf),
+                    (-stab_4-kerf,-stab_5+kerf),
+                    (-stab_4-kerf,-stab_cherry_top_x+kerf),
+                    (-mx_stab_inside_x-kerf,-stab_cherry_top_x+kerf),
+                    (-mx_stab_inside_x-kerf,-mx_stab_inside_y+kerf),
+                    (-mx_width+kerf,-mx_stab_inside_y+kerf),
+                    (-mx_width+kerf,-mx_height+kerf),
+                    (mx_width-kerf,-mx_height+kerf)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
-                if rs:
-                    points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                if rotate_stab:
+                    points = self.rotate_points(points, rotate_stab, (0,0))
+                plate = plate.polyline(points).cutThruAll()
             elif stab_type == 'cherry':
-                # cherry spec 2u stabilizer
                 points = [
-                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
-                    (mx_stab_inside_x+k,-stab_cherry_top_x+k),
-                    (mx_stab_outside_x-k,-stab_cherry_top_x+k),
-                    (mx_stab_outside_x-k,-stab_y_wire+k),
-                    (stab_9-k,-stab_y_wire+k),
-                    (stab_9-k,stab_cherry_wing_bottom_x-k),
-                    (mx_stab_outside_x-k,stab_cherry_wing_bottom_x-k),
-                    (mx_stab_outside_x-k,stab_cherry_bottom_x-k),
-                    (stab_6-k,stab_cherry_bottom_x-k),
-                    (stab_6-k,stab_cherry_bottom_wing_bottom_y-k),
-                    (stab_4+k,stab_cherry_bottom_wing_bottom_y-k),
-                    (stab_4+k,stab_cherry_bottom_x-k),
-                    (mx_stab_inside_x+k,stab_cherry_bottom_x-k),
-                    (mx_stab_inside_x+k,stab_13-k),
-                    (-mx_stab_inside_x-k,stab_13-k),
-                    (-mx_stab_inside_x-k,stab_cherry_bottom_x-k),
-                    (-stab_4-k,stab_cherry_bottom_x-k),
-                    (-stab_4-k,stab_cherry_bottom_wing_bottom_y-k),
-                    (-stab_6+k,stab_cherry_bottom_wing_bottom_y-k),
-                    (-stab_6+k,stab_cherry_bottom_x-k),
-                    (-mx_stab_outside_x+k,stab_cherry_bottom_x-k),
-                    (-mx_stab_outside_x+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,stab_cherry_wing_bottom_x-k),
-                    (-stab_9+k,-stab_y_wire+k),
-                    (-mx_stab_outside_x+k,-stab_y_wire+k),
-                    (-mx_stab_outside_x+k,-stab_cherry_top_x+k),
-                    (-mx_stab_inside_x-k,-stab_cherry_top_x+k),
-                    (-mx_stab_inside_x-k,-mx_stab_inside_y+k),
-                    (mx_stab_inside_x+k,-mx_stab_inside_y+k),
+                    (mx_stab_inside_x+kerf,-mx_stab_inside_y+kerf),
+                    (mx_stab_inside_x+kerf,-stab_cherry_top_x+kerf),
+                    (mx_stab_outside_x-kerf,-stab_cherry_top_x+kerf),
+                    (mx_stab_outside_x-kerf,-stab_y_wire+kerf),
+                    (stab_9-kerf,-stab_y_wire+kerf),
+                    (stab_9-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (mx_stab_outside_x-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (mx_stab_outside_x-kerf,stab_cherry_bottom_x-kerf),
+                    (stab_6-kerf,stab_cherry_bottom_x-kerf),
+                    (stab_6-kerf,stab_cherry_bottom_wing_bottom_y-kerf),
+                    (stab_4+kerf,stab_cherry_bottom_wing_bottom_y-kerf),
+                    (stab_4+kerf,stab_cherry_bottom_x-kerf),
+                    (mx_stab_inside_x+kerf,stab_cherry_bottom_x-kerf),
+                    (mx_stab_inside_x+kerf,stab_13-kerf),
+                    (-mx_stab_inside_x-kerf,stab_13-kerf),
+                    (-mx_stab_inside_x-kerf,stab_cherry_bottom_x-kerf),
+                    (-stab_4-kerf,stab_cherry_bottom_x-kerf),
+                    (-stab_4-kerf,stab_cherry_bottom_wing_bottom_y-kerf),
+                    (-stab_6+kerf,stab_cherry_bottom_wing_bottom_y-kerf),
+                    (-stab_6+kerf,stab_cherry_bottom_x-kerf),
+                    (-mx_stab_outside_x+kerf,stab_cherry_bottom_x-kerf),
+                    (-mx_stab_outside_x+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-stab_9+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-stab_9+kerf,-stab_y_wire+kerf),
+                    (-mx_stab_outside_x+kerf,-stab_y_wire+kerf),
+                    (-mx_stab_outside_x+kerf,-stab_cherry_top_x+kerf),
+                    (-mx_stab_inside_x-kerf,-stab_cherry_top_x+kerf),
+                    (-mx_stab_inside_x-kerf,-mx_stab_inside_y+kerf),
+                    (mx_stab_inside_x+kerf,-mx_stab_inside_y+kerf),
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
-                if rs:
-                    points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                if rotate_stab:
+                    points = self.rotate_points(points, rotate_stab, (0,0))
+                plate = plate.polyline(points).cutThruAll()
             elif stab_type == 'costar':
-                # costar stabilizers only
                 points_l = [
-                    (-stab_4-k,-stab_5+k),
-                    (-stab_6+k,-stab_5+k),
-                    (-stab_6+k,stab_12-k),
-                    (-stab_4-k,stab_12-k),
-                    (-stab_4-k,-stab_5+k)
+                    (-stab_4-kerf,-stab_5+kerf),
+                    (-stab_6+kerf,-stab_5+kerf),
+                    (-stab_6+kerf,stab_12-kerf),
+                    (-stab_4-kerf,stab_12-kerf),
+                    (-stab_4-kerf,-stab_5+kerf)
                 ]
                 points_r = [
-                    (stab_4+k,-stab_5+k),
-                    (stab_6-k,-stab_5+k),
-                    (stab_6-k,stab_12-k),
-                    (stab_4+k,stab_12-k),
-                    (stab_4+k,-stab_5+k)
+                    (stab_4+kerf,-stab_5+kerf),
+                    (stab_6-kerf,-stab_5+kerf),
+                    (stab_6-kerf,stab_12-kerf),
+                    (stab_4+kerf,stab_12-kerf),
+                    (stab_4+kerf,-stab_5+kerf)
                 ]
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
                     points_r = self.rotate_points(points_r, 90, (0,0))
-                if rs:
-                    points_l = self.rotate_points(points_l, rs, (0,0))
-                    points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                if rotate_stab:
+                    points_l = self.rotate_points(points_l, rotate_stab, (0,0))
+                    points_r = self.rotate_points(points_r, rotate_stab, (0,0))
+                plate = plate.polyline(points_l).cutThruAll()
+                plate = plate.polyline(points_r).cutThruAll()
             elif stab_type in ('alps', 'matias'):
-                # Alps stabilizers
                 points_r = [
-                    (alps_stab_inside_x+k, alps_stab_top_y+k),
-                    (alps_stab_ouside_x-k, alps_stab_top_y+k),
-                    (alps_stab_ouside_x-k, alps_stab_bottom_y-k),
-                    (alps_stab_inside_x+k, alps_stab_bottom_y-k),
-                    (alps_stab_inside_x+k, alps_stab_top_y+k)
+                    (alps_stab_inside_x+kerf, alps_stab_top_y+kerf),
+                    (alps_stab_ouside_x-kerf, alps_stab_top_y+kerf),
+                    (alps_stab_ouside_x-kerf, alps_stab_bottom_y-kerf),
+                    (alps_stab_inside_x+kerf, alps_stab_bottom_y-kerf),
+                    (alps_stab_inside_x+kerf, alps_stab_top_y+kerf)
                 ]
                 points_l = [
-                    (-alps_stab_inside_x+k, alps_stab_top_y+k),
-                    (-alps_stab_ouside_x-k, alps_stab_top_y+k),
-                    (-alps_stab_ouside_x-k, alps_stab_bottom_y-k),
-                    (-alps_stab_inside_x+k, alps_stab_bottom_y-k),
-                    (-alps_stab_inside_x+k, alps_stab_top_y+k)
+                    (-alps_stab_inside_x+kerf, alps_stab_top_y+kerf),
+                    (-alps_stab_ouside_x-kerf, alps_stab_top_y+kerf),
+                    (-alps_stab_ouside_x-kerf, alps_stab_bottom_y-kerf),
+                    (-alps_stab_inside_x+kerf, alps_stab_bottom_y-kerf),
+                    (-alps_stab_inside_x+kerf, alps_stab_top_y+kerf)
                 ]
 
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
                     points_r = self.rotate_points(points_r, 90, (0,0))
-                if rs:
-                    points_l = self.rotate_points(points_l, rs, (0,0))
-                    points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                if rotate_stab:
+                    points_l = self.rotate_points(points_l, rotate_stab, (0,0))
+                    points_r = self.rotate_points(points_r, rotate_stab, (0,0))
+                plate = plate.polyline(points_l).cutThruAll()
+                plate = plate.polyline(points_r).cutThruAll()
             else:
                 log.error('Unknown stab type %s! No stabilizer cut', stab_type)
 
-        # cut spacebar stabilizer cutout
-        elif (w >= 3) or (rotate and h >= 3):
+        # Cut larger stabilizer cutouts
+        elif (width >= 3) or (rotate and height >= 3):
             if stab_type == 'cherry-costar':
-                # modified mx cherry spec stabilizer to support costar
                 points = [
-                    (x-stab_cherry_half_width+k,-stab_y_wire+k),
-                    (x-stab_cherry_half_width+k,-stab_cherry_top_x+k),
-                    (x-stab_cherry_bottom_wing_half_width+k,-stab_cherry_top_x+k),
-                    (x-stab_cherry_bottom_wing_half_width+k,-stab_5+k),
-                    (x+stab_cherry_bottom_wing_half_width-k,-stab_5+k),
-                    (x+stab_cherry_bottom_wing_half_width-k,-stab_cherry_top_x+k),
-                    (x+stab_cherry_half_width-k,-stab_cherry_top_x+k),
-                    (x+stab_cherry_half_width-k,-stab_y_wire+k),
-                    (x+stab_cherry_outside_x-k,-stab_y_wire+k),
-                    (x+stab_cherry_outside_x-k,stab_cherry_wing_bottom_x-k),
-                    (x+stab_cherry_half_width-k,stab_cherry_wing_bottom_x-k),
-                    (x+stab_cherry_half_width-k,stab_cherry_bottom_x-k),
-                    (x+stab_cherry_bottom_wing_half_width-k,stab_cherry_bottom_x-k),
-                    (x+stab_cherry_bottom_wing_half_width-k,stab_12-k),
-                    (x-stab_cherry_bottom_wing_half_width+k,stab_12-k),
-                    (x-stab_cherry_bottom_wing_half_width+k,stab_cherry_bottom_x-k),
-                    (x-stab_cherry_half_width+k,stab_cherry_bottom_x-k),
-                    (x-stab_cherry_half_width+k,stab_y_wire-k),
-                    (-x+stab_cherry_half_width-k,stab_y_wire-k),
-                    (-x+stab_cherry_half_width-k,stab_cherry_bottom_x-k),
-                    (-x+stab_cherry_bottom_wing_half_width-k,stab_cherry_bottom_x-k),
-                    (-x+stab_cherry_bottom_wing_half_width-k,stab_12-k),
-                    (-x-stab_cherry_bottom_wing_half_width+k,stab_12-k),
-                    (-x-stab_cherry_bottom_wing_half_width+k,stab_cherry_bottom_x-k),
-                    (-x-stab_cherry_half_width+k,stab_cherry_bottom_x-k),
-                    (-x-stab_cherry_half_width+k,stab_cherry_wing_bottom_x-k),
-                    (-x-stab_cherry_outside_x+k,stab_cherry_wing_bottom_x-k),
-                    (-x-stab_cherry_outside_x+k,-stab_y_wire+k),
-                    (-x-stab_cherry_half_width+k,-stab_y_wire+k),
-                    (-x-stab_cherry_half_width+k,-stab_cherry_top_x+k),
-                    (-x-stab_cherry_bottom_wing_half_width+k,-stab_cherry_top_x+k),
-                    (-x-stab_cherry_bottom_wing_half_width+k,-stab_5+k),
-                    (-x+stab_cherry_bottom_wing_half_width-k,-stab_5+k),
-                    (-x+stab_cherry_bottom_wing_half_width-k,-stab_cherry_top_x+k),
-                    (-x+stab_cherry_half_width-k,-stab_cherry_top_x+k),
-                    (-x+stab_cherry_half_width-k,-stab_y_wire+k),
-                    (x-stab_cherry_half_width+k,-stab_y_wire+k)
+                    (x-stab_cherry_half_width+kerf,-stab_y_wire+kerf),
+                    (x-stab_cherry_half_width+kerf,-stab_cherry_top_x+kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_cherry_top_x+kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,-stab_cherry_top_x+kerf),
+                    (x+stab_cherry_half_width-kerf,-stab_cherry_top_x+kerf),
+                    (x+stab_cherry_half_width-kerf,-stab_y_wire+kerf),
+                    (x+stab_cherry_outside_x-kerf,-stab_y_wire+kerf),
+                    (x+stab_cherry_outside_x-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (x+stab_cherry_half_width-kerf,stab_cherry_wing_bottom_x-kerf),
+                    (x+stab_cherry_half_width-kerf,stab_cherry_bottom_x-kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,stab_cherry_bottom_x-kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,stab_cherry_bottom_x-kerf),
+                    (x-stab_cherry_half_width+kerf,stab_cherry_bottom_x-kerf),
+                    (x-stab_cherry_half_width+kerf,stab_y_wire-kerf),
+                    (-x+stab_cherry_half_width-kerf,stab_y_wire-kerf),
+                    (-x+stab_cherry_half_width-kerf,stab_cherry_bottom_x-kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,stab_cherry_bottom_x-kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,stab_cherry_bottom_x-kerf),
+                    (-x-stab_cherry_half_width+kerf,stab_cherry_bottom_x-kerf),
+                    (-x-stab_cherry_half_width+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-x-stab_cherry_outside_x+kerf,stab_cherry_wing_bottom_x-kerf),
+                    (-x-stab_cherry_outside_x+kerf,-stab_y_wire+kerf),
+                    (-x-stab_cherry_half_width+kerf,-stab_y_wire+kerf),
+                    (-x-stab_cherry_half_width+kerf,-stab_cherry_top_x+kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,-stab_cherry_top_x+kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_cherry_top_x+kerf),
+                    (-x+stab_cherry_half_width-kerf,-stab_cherry_top_x+kerf),
+                    (-x+stab_cherry_half_width-kerf,-stab_y_wire+kerf),
+                    (x-stab_cherry_half_width+kerf,-stab_y_wire+kerf)
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
-                if rs:
-                    points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                if rotate_stab:
+                    points = self.rotate_points(points, rotate_stab, (0,0))
+                plate = plate.polyline(points).cutThruAll()
             elif stab_type == 'cherry':
-                # cherry spec spacebar stabilizer
                 points = [
-                    (x - stab_cherry_half_width + k, -stab_y_wire + k),#1
-                    (x - stab_cherry_half_width + k, -stab_cherry_top_x + k),#2
-                    (x + stab_cherry_half_width - k, -stab_cherry_top_x + k),#3
-                    (x + stab_cherry_half_width - k, -stab_y_wire + k),#4
-                    (x + stab_cherry_outside_x - k, -stab_y_wire + k),#5
-                    (x + stab_cherry_outside_x - k, stab_cherry_wing_bottom_x - k),#6
-                    (x + stab_cherry_half_width - k, stab_cherry_wing_bottom_x - k),#7
-                    (x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),#8
-                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),#9
-                    (x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),#10
-                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),#11
-                    (x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),#12
-                    (x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),#13
-                    (x - stab_cherry_half_width + k, stab_bottom_y_wire - k),#14
-                    (-x + stab_cherry_half_width - k, stab_bottom_y_wire - k),#15
-                    (-x + stab_cherry_half_width - k, stab_cherry_bottom_x - k),#16
-                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_x - k),#17
-                    (-x + stab_cherry_bottom_wing_half_width - k, stab_cherry_bottom_wing_bottom_y - k),#18
-                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_wing_bottom_y - k),#19
-                    (-x - stab_cherry_bottom_wing_half_width + k, stab_cherry_bottom_x - k),#20
-                    (-x - stab_cherry_half_width + k, stab_cherry_bottom_x - k),#21
-                    (-x - stab_cherry_half_width + k, stab_cherry_wing_bottom_x - k),#22
-                    (-x - stab_cherry_outside_x + k, stab_cherry_wing_bottom_x - k),#23
-                    (-x - stab_cherry_outside_x + k, -stab_y_wire + k),#24
-                    (-x - stab_cherry_half_width + k, -stab_y_wire + k),#25
-                    (-x - stab_cherry_half_width + k, -stab_cherry_top_x + k),#26
-                    (-x + stab_cherry_half_width - k, -stab_cherry_top_x + k),#27
-                    (-x + stab_cherry_half_width - k, -stab_y_wire + k),#28
-                    (x - stab_cherry_half_width + k, -stab_y_wire + k),#1
+                    (x - stab_cherry_half_width + kerf, -stab_y_wire + kerf),#1
+                    (x - stab_cherry_half_width + kerf, -stab_cherry_top_x + kerf),#2
+                    (x + stab_cherry_half_width - kerf, -stab_cherry_top_x + kerf),#3
+                    (x + stab_cherry_half_width - kerf, -stab_y_wire + kerf),#4
+                    (x + stab_cherry_outside_x - kerf, -stab_y_wire + kerf),#5
+                    (x + stab_cherry_outside_x - kerf, stab_cherry_wing_bottom_x - kerf),#6
+                    (x + stab_cherry_half_width - kerf, stab_cherry_wing_bottom_x - kerf),#7
+                    (x + stab_cherry_half_width - kerf, stab_cherry_bottom_x - kerf),#8
+                    (x + stab_cherry_bottom_wing_half_width - kerf, stab_cherry_bottom_x - kerf),#9
+                    (x + stab_cherry_bottom_wing_half_width - kerf, stab_cherry_bottom_wing_bottom_y - kerf),#10
+                    (x - stab_cherry_bottom_wing_half_width + kerf, stab_cherry_bottom_wing_bottom_y - kerf),#11
+                    (x - stab_cherry_bottom_wing_half_width + kerf, stab_cherry_bottom_x - kerf),#12
+                    (x - stab_cherry_half_width + kerf, stab_cherry_bottom_x - kerf),#13
+                    (x - stab_cherry_half_width + kerf, stab_bottom_y_wire - kerf),#14
+                    (-x + stab_cherry_half_width - kerf, stab_bottom_y_wire - kerf),#15
+                    (-x + stab_cherry_half_width - kerf, stab_cherry_bottom_x - kerf),#16
+                    (-x + stab_cherry_bottom_wing_half_width - kerf, stab_cherry_bottom_x - kerf),#17
+                    (-x + stab_cherry_bottom_wing_half_width - kerf, stab_cherry_bottom_wing_bottom_y - kerf),#18
+                    (-x - stab_cherry_bottom_wing_half_width + kerf, stab_cherry_bottom_wing_bottom_y - kerf),#19
+                    (-x - stab_cherry_bottom_wing_half_width + kerf, stab_cherry_bottom_x - kerf),#20
+                    (-x - stab_cherry_half_width + kerf, stab_cherry_bottom_x - kerf),#21
+                    (-x - stab_cherry_half_width + kerf, stab_cherry_wing_bottom_x - kerf),#22
+                    (-x - stab_cherry_outside_x + kerf, stab_cherry_wing_bottom_x - kerf),#23
+                    (-x - stab_cherry_outside_x + kerf, -stab_y_wire + kerf),#24
+                    (-x - stab_cherry_half_width + kerf, -stab_y_wire + kerf),#25
+                    (-x - stab_cherry_half_width + kerf, -stab_cherry_top_x + kerf),#26
+                    (-x + stab_cherry_half_width - kerf, -stab_cherry_top_x + kerf),#27
+                    (-x + stab_cherry_half_width - kerf, -stab_y_wire + kerf),#28
+                    (x - stab_cherry_half_width + kerf, -stab_y_wire + kerf),#1
                 ]
                 if rotate:
                     points = self.rotate_points(points, 90, (0,0))
-                if rs:
-                    points = self.rotate_points(points, rs, (0,0))
-                p = p.polyline(points).cutThruAll()
+                if rotate_stab:
+                    points = self.rotate_points(points, rotate_stab, (0,0))
+                plate = plate.polyline(points).cutThruAll()
             elif stab_type in ('costar', 'matias'):
-                # costar stabilizers only
                 points_l = [
-                    (-x+stab_cherry_bottom_wing_half_width-k,-stab_5+k), (-x-stab_cherry_bottom_wing_half_width+k,-stab_5+k), (-x-stab_cherry_bottom_wing_half_width+k,stab_12-k),
-                    (-x+stab_cherry_bottom_wing_half_width-k,stab_12-k), (-x+stab_cherry_bottom_wing_half_width-k,-stab_5+k)
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf), (-x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf), (-x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf), (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf)
                 ]
                 points_r = [
-                    (x-stab_cherry_bottom_wing_half_width+k,-stab_5+k), (x+stab_cherry_bottom_wing_half_width-k,-stab_5+k), (x+stab_cherry_bottom_wing_half_width-k,stab_12-k),
-                    (x-stab_cherry_bottom_wing_half_width+k,stab_12-k), (x-stab_cherry_bottom_wing_half_width+k,-stab_5+k)
+                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf), (x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf), (x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf), (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf)
                 ]
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
                     points_r = self.rotate_points(points_r, 90, (0,0))
-                if rs:
-                    points_l = self.rotate_points(points_l, rs, (0,0))
-                    points_r = self.rotate_points(points_r, rs, (0,0))
-                p = p.polyline(points_l).cutThruAll()
-                p = p.polyline(points_r).cutThruAll()
+                if rotate_stab:
+                    points_l = self.rotate_points(points_l, rotate_stab, (0,0))
+                    points_r = self.rotate_points(points_r, rotate_stab, (0,0))
+                plate = plate.polyline(points_l).cutThruAll()
+                plate = plate.polyline(points_r).cutThruAll()
             elif stab_type == 'alps':
-                # Alps stabilizers only
-                # FIXME: Write this
+                # FIXME: Pull this in from your stashed patch
                 log.error('Vintage alps stabilizers for spacebar not implemented!')
             else:
                 log.error('Unknown stab type %s! No stabilizer cut', stab_type)
 
-        self.x_off += c[0]
-        return p
+        self.x_off += switch_coord[0]
+        return plate
 
+    def center(self, plate, x, y):
+        """Move the center point and record how far we have moved relative to the center of the plate.
+        """
+        self.origin = (self.origin[0]+x, self.origin[1]+y)
 
-    # sets the center and also records the relative distance it moved in relation to 'origin'
-    def center(self, p, x, y):
-        _x = self.origin[0]
-        _y = self.origin[1]
-        self.origin = (_x+x, _y+y)
-        return p.center(x, y)
-
+        return plate.center(x, y)
 
     def __repr__(self):
-        '''Print out all Plate object configuration settings.'''
-
+        """Print out all Plate object configuration settings.
+        """
         settings = {}
 
         settings['plate_layout'] = self.layout
@@ -894,64 +949,60 @@ class Plate(object):
         settings['pcb_height_padding'] = self.y_pcb_pad
         settings['plate_corners'] = self.corners
         settings['kerf'] = self.kerf
-        # XXX line colour?
 
         return json.dumps(settings, sort_keys=True, indent=4, separators=(',', ': '))
 
-
-
-    def export(self, p, result, label):
-        # export the plate to different file formats
-        log.info("Exporting %s layer for %s", label, self.export_basename)
+    def export(self, plate, result, layer):
+        """Export the specified layer to the formats specified in result['formats'].
+        """
+        log.info("Exporting %s layer for %s", layer, self.export_basename)
         # draw the part so we can export it
-        Part.show(p.val().wrapped)
+        Part.show(plate.val().wrapped)
         doc = FreeCAD.ActiveDocument
         # export the drawing into different formats
         pwd_len = len(config.app['pwd']) # the absolute part of the working directory (aka - outside the web space)
-        result['exports'][label] = []
+        self.exports[layer] = []
         if 'js' in result['formats']:
-            with open("%s/%s_%s.js" % (config.app['export'], label, self.export_basename), "w") as f:
-                cadquery.exporters.exportShape(p, 'TJS', f)
-                result['exports'][label].append({'name':'js', 'url':'%s/%s_%s.js' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            with open("%s/%s_%s.js" % (config.app['export'], layer, self.export_basename), "w") as f:
+                cadquery.exporters.exportShape(plate, 'TJS', f)
+                self.exports[layer].append({'name': 'js', 'url': '%s/%s_%s.js' % (config.app['export'][pwd_len:], layer, self.export_basename)})
                 log.info("Exported 'JS'")
         if 'brp' in result['formats']:
-            Part.export(doc.Objects, "%s/%s_%s.brp" % (config.app['export'], label, self.export_basename))
-            result['exports'][label].append({'name':'brp', 'url':'%s/%s_%s.brp' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            Part.export(doc.Objects, "%s/%s_%s.brp" % (config.app['export'], layer, self.export_basename))
+            self.exports[layer].append({'name': 'brp', 'url': '%s/%s_%s.brp' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'BRP'")
         if 'stp' in result['formats']:
-            Part.export(doc.Objects, "%s/%s_%s.stp" % (config.app['export'], label, self.export_basename))
-            result['exports'][label].append({'name':'stp', 'url':'%s/%s_%s.stp' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            Part.export(doc.Objects, "%s/%s_%s.stp" % (config.app['export'], layer, self.export_basename))
+            self.exports[layer].append({'name': 'stp', 'url': '%s/%s_%s.stp' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'STP'")
         if 'stl' in result['formats']:
-            Mesh.export(doc.Objects, "%s/%s_%s.stl" % (config.app['export'], label, self.export_basename))
-            result['exports'][label].append({'name':'stl', 'url':'%s/%s_%s.stl' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            Mesh.export(doc.Objects, "%s/%s_%s.stl" % (config.app['export'], layer, self.export_basename))
+            self.exports[layer].append({'name': 'stl', 'url': '%s/%s_%s.stl' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'STL'")
         if 'dxf' in result['formats']:
-            importDXF.export(doc.Objects, "%s/%s_%s.dxf" % (config.app['export'], label, self.export_basename))
-            result['exports'][label].append({'name':'dxf', 'url':'%s/%s_%s.dxf' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            importDXF.export(doc.Objects, "%s/%s_%s.dxf" % (config.app['export'], layer, self.export_basename))
+            self.exports[layer].append({'name': 'dxf', 'url': '%s/%s_%s.dxf' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'DXF'")
         if 'svg' in result['formats']:
-            importSVG.export(doc.Objects, "%s/%s_%s.svg" % (config.app['export'], label, self.export_basename))
-            result['exports'][label].append({'name':'svg', 'url':'%s/%s_%s.svg' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            importSVG.export(doc.Objects, "%s/%s_%s.svg" % (config.app['export'], layer, self.export_basename))
+            self.exports[layer].append({'name': 'svg', 'url': '%s/%s_%s.svg' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'SVG'")
-        if 'json' in result['formats'] and label == SWITCH_LAYER:
-            with open("%s/%s_%s.json" % (config.app['export'], label, self.export_basename), 'w') as json_file:
+        if 'json' in result['formats'] and layer == SWITCH_LAYER:
+            with open("%s/%s_%s.json" % (config.app['export'], layer, self.export_basename), 'w') as json_file:
                 json_file.write(repr(self))
-            result['exports'][label].append({'name':'json', 'url':'%s/%s_%s.json' % (config.app['export'][pwd_len:], label, self.export_basename)})
+            self.exports[layer].append({'name': 'json', 'url': '%s/%s_%s.json' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'JSON'")
         # remove all the documents from the view before we move on
         for o in doc.Objects:
             doc.removeObject(o.Label)
-
 
 # take the input from the webserver and instantiate and draw the plate
 def build(data):
     # create the result object
     p = Plate(**data)
     result = {
-        'has_layers': len(p.layers) > 1,
-        'plates': p.layers,
         'formats': config.app['formats'],
+        'plates': p.layers,
         'exports': p.exports
     }
     result = p.draw(result)
