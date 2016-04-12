@@ -20,7 +20,7 @@ logging.basicConfig()
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--file', help='File containing the KLE data.')
 parser.add_argument('-n', '--name', help='Output file basename (Default: generate a hash or use -f)')
-parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, alps')
+parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, mx-open-rotatable, alps')
 parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
 parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
@@ -28,7 +28,7 @@ parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole si
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
 parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB')
 parser.add_argument('--usb-outer-width', default=14, type=float, help='Width for the USB connector cutout furthest from the PCB')
-parser.add_argument('--usb-height', default=7.5, type=float, help='How far down the bottom plate to cut to allow for the USB connector.')
+parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector.')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
@@ -49,49 +49,22 @@ args = parser.parse_args()
 if args.corner_type not in ('round', 'beveled'):
     logging.error('Incorrect corner type: %s', args.corner_type)
     exit(1)
-else:
-    if args.corner_type == 'round':
-        args.corner_type = 0
-    elif args.corner_type == 'beveled':
-        args.corner_type = 1
 
 # Figure out what kind of switch it is
 if args.switch:
-    if args.switch == 'mx':
-        args.switch = 0
-    elif args.switch == 'alpsmx':
-        args.switch = 1
-    elif args.switch == 'mx-open':
-        args.switch = 2
-    elif args.switch == 'alps':
-        args.switch = 4
-    elif args.switch in ('1', '2', '3', '4'):
-        args.switch = int(args.switch)
-    else:
+    if args.switch not in ('mx', 'alpsmx', 'mx-open', 'mx-open-rotatable', 'alps'):
         logging.error('Unknown switch type: %s', args.switch)
         exit(1)
 else:
-    args.switch = 1
+    args.switch = 'mx'
 
 # Figure out what kind of stab it is
 if args.stab:
-    if args.stab == 'cherry':
-        args.stab = 1
-    elif args.stab == 'costar':
-        args.stab = 2
-    elif args.stab == 'cherry-costar':
-        args.stab = 0
-    elif args.stab == 'matias':
-        args.stab = 3
-    elif args.stab == 'alps':
-        args.stab = 4
-    elif args.stab in ('1', '2', '3', '4', '5'):
-        args.stab = int(args.stab)
-    else:
+    if args.stab not in ('cherry', 'costar', 'cherry-costar', 'matias', 'alps'):
         logging.error('Unknown stab type: %s', args.stab)
         exit(1)
 else:
-    args.stab = 3
+    args.stab = 'cherry-costar'
 
 # Figure out what kind of case it is
 if args.case:
@@ -106,6 +79,8 @@ holes = []
 if args.hole:
     for hole in args.hole:
         x, y, diameter = hole.split(',')  # Make sure it's in the right format
+        if x[0] == '\\':
+            x = x[1:]
         holes.append((float(x), float(y), float(diameter)))
 
 # Determine what formats to support

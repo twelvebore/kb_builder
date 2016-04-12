@@ -438,23 +438,23 @@
                   <li style="margin-bottom:0 !important;">
                     <span class="label">Switch Type</span>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="0" /><img src="/static/images/switch_type_0.png">
+                      <input type="radio" name="switch-type" value="mx" /><img src="/static/images/switch_type_0.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="1" checked="checked" /><img src="/static/images/switch_type_1.png">
+                      <input type="radio" name="switch-type" value="alpsmx" checked="checked" /><img src="/static/images/switch_type_1.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="2" /><img src="/static/images/switch_type_2.png">
+                      <input type="radio" name="switch-type" value="mx-open" /><img src="/static/images/switch_type_2.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="3" /><img src="/static/images/switch_type_3.png">
+                      <input type="radio" name="switch-type" value="mx-open-rotatable" /><img src="/static/images/switch_type_3.png">
                     </label>
                     <label class="radio-label">
-                      <input type="radio" name="switch-type" value="4" /><img src="/static/images/switch_type_4.png">
+                      <input type="radio" name="switch-type" value="alps" /><img src="/static/images/switch_type_4.png">
                     </label>
                     <span data-id="switch-type-help" class="help">&nbsp;</span>
                     <div id="switch-type-help" class="help-dialog" title="Switch Type Help">
-                      You have 3 different switch cutouts which you can choose from.  Keep in mind that the more complex the cutout, the more expensive the plate will be to cut.  I would strongly recommend the second option unless you have a reason not to choose it because it is affordable and both Cherry MX and Alps compatible and the MX switches can be opened.<br />
+                      You have 5 different switch cutouts which you can choose from.  Keep in mind that the more complex the cutout, the more expensive the plate will be to cut.  I would strongly recommend the second option unless you have a reason not to choose it because it is affordable and both Cherry MX and Alps compatible and the MX switches can be opened.<br />
                       <ul class="unstyle">
                         <li><img src="/static/images/switch_type_0.png" style="float:left;"> This is the standard cutout used by all non-custom keyboards.  This layout is the most inexpensive to cut, but also does not allow you open the switches without desoldering.  If you are hand wiring a keyboard, this switch opening may be good enough for you since you can unclip the switch from the plate without desoldering.</li>
                         <li><img src="/static/images/switch_type_1.png" style="float:left;"> This is the default and recommended switch cutout.  It balances features with affordability since it is less expensive to cut than any of the other openable cutouts.  This opening allows for MX switches to be opened without desoldering and is also Alps compatible.</li>
@@ -468,11 +468,11 @@
                     <label for="stab-type" class="label"><span>Stabilizer Type</span></label>
                     <span id="stab-type-label" class="dropdown-label">
                       <select id="stab-type" class="dropdown" name="stab-type">
-                        <option value="0" selected>Cherry + Costar</option>
-                        <option value="1">Cherry Only</option>
-                        <option value="2">Costar Only</option>
-                        <option value="3">Matias</option>
-                        <option value="4">Alps</option>
+                        <option value="cherry-costar" selected>Cherry + Costar</option>
+                        <option value="cherry">Cherry Only</option>
+                        <option value="costar">Costar Only</option>
+                        <option value="matias">Matias</option>
+                        <option value="alps">Alps</option>
                       </select>
                     </span>
                     <span data-id="stab-type-help" class="help">&nbsp;</span>

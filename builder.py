@@ -45,7 +45,7 @@ CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 class Plate(object):
-    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type=0, width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type=0, corners=0, switch_type=1, usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False, oversize=[], oversize_distance=4):
+    def __init__(self, keyboard_layout, export_basename, kerf=0.0, case_type=None, corner_type='round', width_padding=0, height_padding=0, usb_inner_width=10, usb_outer_width=10, usb_height=7.5, stab_type='cherry', corners=0, switch_type='mx', usb_offset=0, pcb_height_padding=0, pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0, thickness=1.5, holes=None, reinforcing=False, oversize=[], oversize_distance=4):
         # User settable things
         self.export_basename = export_basename
         self.case = {'type': case_type}
@@ -69,13 +69,13 @@ class Plate(object):
         self.y_pcb_pad = pcb_height_padding / 2
 
         # Sanity checks
-        if not 0 <= switch_type <= 4:
-            log.error('Unknown switch type %s, defaulting to 0!', switch_type)
-            self.switch_type = 0
+        if switch_type not in ('mx', 'alpsmx', 'mx-open', 'mx-open-rotatable', 'alps'):
+            log.error('Unknown switch type %s, defaulting to mx!', switch_type)
+            self.switch_type = 'mx'
 
-        if not 0 <= stab_type <= 4:
-            log.error('Unknown stabilizer type %s, defaulting to 0!', stab_type)
-            self.stab_type = 0
+        if stab_type not in ('cherry', 'costar', 'cherry-costar', 'matias', 'alps'):
+            log.error('Unknown stabilizer type %s, defaulting to "cherry"!', stab_type)
+            self.stab_type = 'cherry'
 
         # Plate state info
         self.UOM = "mm"
@@ -181,6 +181,10 @@ class Plate(object):
         prev_y_off = 0
         p = self.init_plate(oversize=self.oversize_distance if layer in self.oversize else 0)
 
+        if layer != TOP_LAYER:
+            # Put holes into switch/reinforcing plates
+            p = self.cut_switch_plate_holes(p)
+
         for r, row in enumerate(self.layout):
             for k, key in enumerate(row):
                 x, y, kx = 0, 0, 0
@@ -216,10 +220,6 @@ class Plate(object):
                 p = self.cut_switch(p, (x, y), key, layer)
                 prev_width = key['w']
 
-        if layer != TOP_LAYER:
-            # Put holes into switch/reinforcing plates
-            p = self.cut_switch_plate_holes(p)
-
         return p
 
     def cut_usb_hole(self, p, oversize=0):
@@ -244,8 +244,9 @@ class Plate(object):
         """
         for hole in self.holes:
             x, y, diameter = hole
-            p = p.center(x, y).circle(diameter/2).cutThruAll()
-            p = p.center(-x, -y)
+            p.center(x, y).hole(diameter).center(-x,-y)
+            #p = p.center(x, y).circle(diameter/2).cutThruAll()
+            #p = p.center(-x, -y)
 
         return p
 
@@ -327,17 +328,18 @@ class Plate(object):
         """Return a basic plate with the features that are common to all layers.
 
         If oversize is greater than 0 the layer will be made that many mm larger than default, while keeping screws in the same position.
+
         """
         p = cadquery.Workplane("front").box(self.width+oversize, self.height+oversize, self.thickness)
 
         # Cut the corners if necessary
-        if self.corners > 0 and self.corner_type == 0:
+        if self.corners > 0 and self.corner_type == 'round':
             p = p.edges("|Z").fillet(self.corners)
 
         p = p.faces("<Z").workplane()
 
         if self.corners > 0:
-            if self.corner_type == 1:
+            if self.corner_type == 'beveled':
                 # Lower right corner
                 points = (
                     (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
@@ -362,7 +364,7 @@ class Plate(object):
                     (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
                 )
                 p = p.polyline(points).cutThruAll()
-            elif self.corner_type != 0:
+            elif self.corner_type != 'round':
                 log.error('Unknown corner type %s!', self.corner_type)
 
         # Cut the mount holes in the plate
@@ -452,8 +454,8 @@ class Plate(object):
 
         w = key['w'] if 'w' in key else 1
         h = key['h'] if 'h' in key else 1
-        t = key['_t'] if '_t' in key and key['_t'] in range(4) else self.switch_type
-        s = key['_s'] if '_s' in key and key['_s'] in range(4) else self.stab_type
+        switch_type = key['_t'] if '_t' in key else self.switch_type
+        stab_type = key['_s'] if '_s' in key else self.stab_type
         k = key['_k']/2 if '_k' in key else self.kerf
         r = key['_r'] if '_r' in key else None
         rs = key['_rs'] if '_rs' in key else None
@@ -498,10 +500,8 @@ class Plate(object):
 
         if layer is TOP_LAYER:
             # Cut out openings the size of keycaps
-            t = 0
-            s = 1
-            #mx_width = (self.u1/2+0.5) * w
-            #mx_height = self.u1/2+0.5
+            switch_type = 'mx'
+            stab_type = 'cherry'
             if h > 1:
                 mx_width = ((self.u1/2) * h) + 0.5
             else:
@@ -546,13 +546,13 @@ class Plate(object):
             # Move to cut the offset switch hole
             p = p.center(center_offset, 0)
 
-        if t == 0: # standard square switch
+        if switch_type == 'mx': # standard square switch
             points = [
                 (mx_width-k+self.grow_x,-mx_height+k-self.grow_y), (mx_width-k+self.grow_x,mx_height-k+self.grow_y),
                 (-mx_width+k-self.grow_x,mx_height-k+self.grow_y), (-mx_width+k-self.grow_x,-mx_height+k-self.grow_y),
                 (mx_width-k+self.grow_x,-mx_height+k-self.grow_y)
             ]
-        elif t == 1: # mx and alps compatible switch, mx can open
+        elif switch_type == 'alpsmx': # mx and alps compatible switch, mx can open
             points = [
                 (mx_width-k,-mx_height+k), (mx_width-k,-alps_height+k), (alps_width-k,-alps_height+k),
                 (alps_width-k,alps_height-k), (mx_width-k,alps_height-k), (mx_width-k,mx_height-k),
@@ -560,7 +560,7 @@ class Plate(object):
                 (-alps_width+k,-alps_height+k), (-mx_width+k,-alps_height+k), (-mx_width+k,-mx_height+k),
                 (mx_width-k,-mx_height+k)
             ]
-        elif t == 2: # mx switch can open (side wings)
+        elif switch_type == 'mx-open': # mx switch can open (side wings)
             points = [
                 (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
                 (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
@@ -570,7 +570,7 @@ class Plate(object):
                 (-mx_width+k,-wing_inside-k), (-alps_width+k,-wing_inside-k), (-alps_width+k,-wing_outside+k),
                 (-mx_width+k,-wing_outside+k), (-mx_width+k,-mx_height+k), (mx_width-k,-mx_height+k)
             ]
-        elif t == 3: # rotatable mx switch can open both ways (side and top/bottom wings)
+        elif switch_type == 'mx-open-rotatable': # rotatable mx switch can open both ways (side and top/bottom wings)
             points = [
                 (mx_width-k,-mx_height+k), (mx_width-k,-wing_outside+k), (alps_width-k,-wing_outside+k),
                 (alps_width-k,-wing_inside-k), (mx_width-k,-wing_inside-k), (mx_width-k,wing_inside+k),
@@ -586,7 +586,7 @@ class Plate(object):
                 (wing_inside+k,-alps_width+k), (wing_outside-k,-alps_width+k), (wing_outside-k,-mx_height+k),
                 (mx_width-k,-mx_height+k)
             ]
-        elif t == 4: # alps compatible switch, not MX compatible
+        elif switch_type == 'alps': # alps compatible switch, not MX compatible
             points = [
                 (alps_width-k,-alps_height+k),
                 (alps_width-k,alps_height-k),
@@ -612,7 +612,7 @@ class Plate(object):
             return p
 
         elif (w >= 2 and w < 3) or (rotate and h >= 2 and h < 3): # 2 unit stabilizer
-            if s == 0:
+            if stab_type == 'cherry-costar':
                 # modified mx cherry spec 2u stabilizer to support costar
                 points = [
                     (mx_width-k,-mx_height+k),
@@ -666,7 +666,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            elif s == 1:
+            elif stab_type == 'cherry':
                 # cherry spec 2u stabilizer
                 points = [
                     (mx_stab_inside_x+k,-mx_stab_inside_y+k),
@@ -704,7 +704,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            elif s == 2:
+            elif stab_type == 'costar':
                 # costar stabilizers only
                 points_l = [
                     (-stab_4-k,-stab_5+k),
@@ -728,7 +728,7 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
-            elif s in (3, 4):
+            elif stab_type in ('alps', 'matias'):
                 # Alps stabilizers
                 points_r = [
                     (alps_stab_inside_x+k, alps_stab_top_y+k),
@@ -754,11 +754,11 @@ class Plate(object):
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
             else:
-                log.error('Unknown stab type %s! No stabilizer cut', s)
+                log.error('Unknown stab type %s! No stabilizer cut', stab_type)
 
         # cut spacebar stabilizer cutout
         elif (w >= 3) or (rotate and h >= 3):
-            if s == 0:
+            if stab_type == 'cherry-costar':
                 # modified mx cherry spec stabilizer to support costar
                 points = [
                     (x-stab_cherry_half_width+k,-stab_y_wire+k),
@@ -804,7 +804,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            elif s == 1:
+            elif stab_type == 'cherry':
                 # cherry spec spacebar stabilizer
                 points = [
                     (x - stab_cherry_half_width + k, -stab_y_wire + k),#1
@@ -842,7 +842,7 @@ class Plate(object):
                 if rs:
                     points = self.rotate_points(points, rs, (0,0))
                 p = p.polyline(points).cutThruAll()
-            elif s in (2, 3):
+            elif stab_type in ('costar', 'matias'):
                 # costar stabilizers only
                 points_l = [
                     (-x+stab_cherry_bottom_wing_half_width-k,-stab_5+k), (-x-stab_cherry_bottom_wing_half_width+k,-stab_5+k), (-x-stab_cherry_bottom_wing_half_width+k,stab_12-k),
@@ -860,12 +860,12 @@ class Plate(object):
                     points_r = self.rotate_points(points_r, rs, (0,0))
                 p = p.polyline(points_l).cutThruAll()
                 p = p.polyline(points_r).cutThruAll()
-            elif s == 4:
+            elif stab_type == 'alps':
                 # Alps stabilizers only
                 # FIXME: Write this
                 log.error('Vintage alps stabilizers for spacebar not implemented!')
             else:
-                log.error('Unknown stab type %s! No stabilizer cut', s)
+                log.error('Unknown stab type %s! No stabilizer cut', stab_type)
 
         self.x_off += c[0]
         return p

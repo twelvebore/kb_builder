@@ -59,8 +59,8 @@ def root_post():
 
     builder_args = {
         'export_basename': data_hash,
-        'switch_type': int(data.get('switch-type')),
-        'stab_type': int(data.get('stab-type')),
+        'switch_type': data.get('switch-type'),
+        'stab_type': data.get('stab-type'),
         'case_type': data.get('case-type'),
         'mount_holes_num': int(data.get('mount-holes-num', 0)),
         'mount_holes_size': float(data.get('mount-holes-size', 4)),
@@ -69,7 +69,7 @@ def root_post():
         'pcb_width_padding': 0, # FIXME: Add to HTML form
         'pcb_height_padding': 0, # FIXME: Add to HTML form
         'corners': float(data.get('fillet', 0)),
-        'corner_type': 0, # FIXME: Add ability to specify 1 for beveled
+        'corner_type': 'round', # FIXME: Add ability to specify beveled
         'thickness': float(data.get('thickness', 1.5)),
         'kerf': float(data.get('kerf', 0)),
         'reinforcing': False, # FIXME: Add ability to toggle this on
