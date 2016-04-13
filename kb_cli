@@ -5,14 +5,15 @@ By default this reads the data on stdin. You can also use --file to pass data
 in through a file.
 """
 import argparse
-import builder
 import hashlib
 import hjson
 import logging
 import sys
 from time import time
 import config
-
+from builder import KeyboardCase, BOTTOM_LAYER, CLOSED_LAYER, OPEN_LAYER, \
+    SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER
+from builder import SIMPLE_LAYER
 
 logging.basicConfig()
 
@@ -102,7 +103,8 @@ if __name__ == '__main__':
 
     layout = '{"layout": [' + layout + ']}'
     layout = hjson.loads(layout)['layout']
-    data = {
+    builder_args = {
+        'formats': config.app['formats'],
         'switch_type': args.switch,
         'stab_type': args.stab,
         'case_type': args.case,
@@ -132,45 +134,64 @@ if __name__ == '__main__':
     elif args.file:
         export_basename = args.file
     else:
-        export_basename = hjson.dumps(data, sort_keys=True)
+        export_basename = hjson.dumps(builder_args, sort_keys=True)
         export_basename = hashlib.sha1(export_basename).hexdigest()
-    data['export_basename'] = export_basename
+    builder_args['export_basename'] = export_basename
 
     # Remove default options
     if args.case == '':
-        del(data['mount_holes_size'])
-        del(data['mount_holes_num'])
+        del(builder_args['mount_holes_size'])
+        del(builder_args['mount_holes_num'])
 
     if args.height == 0:
-        del(data['height_padding'])
+        del(builder_args['height_padding'])
 
     if args.width == 0:
-        del(data['width_padding'])
+        del(builder_args['width_padding'])
 
     if args.thickness == 0:
-        del(data['thickness'])
+        del(builder_args['thickness'])
 
     if args.corners == 0:
-        del(data['corners'])
+        del(builder_args['corners'])
 
     if args.kerf == 0:
-        del(data['kerf'])
+        del(builder_args['kerf'])
 
     # Add any holes
     if holes:
-        data['holes'] = holes
+        builder_args['holes'] = holes
 
     # Build the plate
-    build_start = time()
-    logging.info("Processing %s", (data['export_basename']))
-    cad = builder.build(data)
-    logging.info("Finished %s", (data['export_basename']))
-    logging.info("Processing took {0:.2f} seconds".format(time()-build_start))
+    build_start = time.time()
+    logging.info("Processing: %s" % (export_basename))
+    case = KeyboardCase(**builder_args)
+
+    # Create the shape based layers
+    layers = (
+        (SIMPLE_LAYER, case.create_simple_bottom_layer),
+        (BOTTOM_LAYER, case.create_bottom_layer),
+        (CLOSED_LAYER, case.create_closed_layer),
+        (OPEN_LAYER, case.create_open_layer),
+    )
+    for layer, create_layer in layers:
+        if layer in case.layers:
+            plate = create_layer(oversize=case.oversize_distance if layer in case.oversize else 0)
+            case.export(plate, layer)
+
+    # Create the switch based layers
+    for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
+        if layer in case.layers:
+            plate = case.create_switch_layer(layer)
+            case.export(plate, layer)
+
+    logging.info("Finished: %s" % (export_basename))
+    logging.info("Processing took: {0:.2f} seconds".format(time.time()-build_start))
 
     # Display info about the plates
-    print '**** Overall plate size: %s x %s mm' % (cad['width'], cad['height'])
+    print '**** Overall plate size: %s x %s mm' % (case.width, case.height)
 
-    for plate in cad['plates']:
+    for plate in case.layers:
         print '*** Files exported for plate', plate
-        for file in cad['exports'][plate]:
+        for file in case.exports[plate]:
             print '*', file['url'][1:]

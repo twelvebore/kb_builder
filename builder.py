@@ -41,7 +41,7 @@ CLOSED_LAYER = 'closed'
 OPEN_LAYER = 'open'
 
 
-class Plate(object):
+class KeyboardCase(object):
     def __init__(self, keyboard_layout, export_basename, kerf=0.0,
                  case_type=None, corner_type='round', width_padding=0,
                  height_padding=0, usb_inner_width=10, usb_outer_width=10,
@@ -49,12 +49,13 @@ class Plate(object):
                  switch_type='mx', usb_offset=0, pcb_height_padding=0,
                  pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
                  thickness=1.5, holes=None, reinforcing=False, oversize=None,
-                 oversize_distance=4):
+                 oversize_distance=4, formats=None):
         # User settable things
         self.export_basename = export_basename
         self.case = {'type': case_type}
         self.corner_type = corner_type
         self.corners = corners
+        self.formats = formats if formats else ['dxf']
         self.kerf = kerf / 2
         self.keyboard_layout = keyboard_layout
         self.holes = holes if holes else []
@@ -254,32 +255,6 @@ class Plate(object):
             #p = p.center(-x, -y)
 
         return p
-
-    def draw(self, result):
-        """Create and export all our layers.
-        """
-        result['width'] = self.width
-        result['height'] = self.height
-
-        # Create the shape based layers
-        layers = (
-            (SIMPLE_LAYER, self.create_simple_bottom_layer),
-            (BOTTOM_LAYER, self.create_bottom_layer),
-            (CLOSED_LAYER, self.create_closed_layer),
-            (OPEN_LAYER, self.create_open_layer),
-        )
-        for layer, create_layer in layers:
-            if layer in self.layers:
-                p = create_layer(oversize=self.oversize_distance if layer in self.oversize else 0)
-                self.export(p, result, layer)
-
-        # Create the switch based layers
-        for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
-            if layer in self.layers:
-                p = self.create_switch_layer(layer)
-                self.export(p, result, layer)
-
-        return result
 
     def parse_layout(self):
         """Parse the supplied layout to determine size and populate the properties of each key
@@ -903,12 +878,18 @@ class Plate(object):
                 plate = plate.polyline(points).cutThruAll()
             elif stab_type in ('costar', 'matias'):
                 points_l = [
-                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf), (-x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf), (-x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
-                    (-x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf), (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf)
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf),
+                    (-x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
+                    (-x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf)
                 ]
                 points_r = [
-                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf), (x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf), (x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
-                    (x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf), (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf)
+                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,-stab_5+kerf),
+                    (x+stab_cherry_bottom_wing_half_width-kerf,stab_12-kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,stab_12-kerf),
+                    (x-stab_cherry_bottom_wing_half_width+kerf,-stab_5+kerf)
                 ]
                 if rotate:
                     points_l = self.rotate_points(points_l, 90, (0,0))
@@ -935,7 +916,7 @@ class Plate(object):
         return plate.center(x, y)
 
     def __repr__(self):
-        """Print out all Plate object configuration settings.
+        """Print out all KeyboardCase object configuration settings.
         """
         settings = {}
 
@@ -952,8 +933,8 @@ class Plate(object):
 
         return json.dumps(settings, sort_keys=True, indent=4, separators=(',', ': '))
 
-    def export(self, plate, result, layer):
-        """Export the specified layer to the formats specified in result['formats'].
+    def export(self, plate, layer):
+        """Export the specified layer to the formats specified in self.formats.
         """
         log.info("Exporting %s layer for %s", layer, self.export_basename)
         # draw the part so we can export it
@@ -962,32 +943,32 @@ class Plate(object):
         # export the drawing into different formats
         pwd_len = len(config.app['pwd']) # the absolute part of the working directory (aka - outside the web space)
         self.exports[layer] = []
-        if 'js' in result['formats']:
+        if 'js' in self.formats:
             with open("%s/%s_%s.js" % (config.app['export'], layer, self.export_basename), "w") as f:
                 cadquery.exporters.exportShape(plate, 'TJS', f)
                 self.exports[layer].append({'name': 'js', 'url': '%s/%s_%s.js' % (config.app['export'][pwd_len:], layer, self.export_basename)})
                 log.info("Exported 'JS'")
-        if 'brp' in result['formats']:
+        if 'brp' in self.formats:
             Part.export(doc.Objects, "%s/%s_%s.brp" % (config.app['export'], layer, self.export_basename))
             self.exports[layer].append({'name': 'brp', 'url': '%s/%s_%s.brp' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'BRP'")
-        if 'stp' in result['formats']:
+        if 'stp' in self.formats:
             Part.export(doc.Objects, "%s/%s_%s.stp" % (config.app['export'], layer, self.export_basename))
             self.exports[layer].append({'name': 'stp', 'url': '%s/%s_%s.stp' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'STP'")
-        if 'stl' in result['formats']:
+        if 'stl' in self.formats:
             Mesh.export(doc.Objects, "%s/%s_%s.stl" % (config.app['export'], layer, self.export_basename))
             self.exports[layer].append({'name': 'stl', 'url': '%s/%s_%s.stl' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'STL'")
-        if 'dxf' in result['formats']:
+        if 'dxf' in self.formats:
             importDXF.export(doc.Objects, "%s/%s_%s.dxf" % (config.app['export'], layer, self.export_basename))
             self.exports[layer].append({'name': 'dxf', 'url': '%s/%s_%s.dxf' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'DXF'")
-        if 'svg' in result['formats']:
+        if 'svg' in self.formats:
             importSVG.export(doc.Objects, "%s/%s_%s.svg" % (config.app['export'], layer, self.export_basename))
             self.exports[layer].append({'name': 'svg', 'url': '%s/%s_%s.svg' % (config.app['export'][pwd_len:], layer, self.export_basename)})
             log.info("Exported 'SVG'")
-        if 'json' in result['formats'] and layer == SWITCH_LAYER:
+        if 'json' in self.formats and layer == SWITCH_LAYER:
             with open("%s/%s_%s.json" % (config.app['export'], layer, self.export_basename), 'w') as json_file:
                 json_file.write(repr(self))
             self.exports[layer].append({'name': 'json', 'url': '%s/%s_%s.json' % (config.app['export'][pwd_len:], layer, self.export_basename)})
@@ -995,18 +976,4 @@ class Plate(object):
         # remove all the documents from the view before we move on
         for o in doc.Objects:
             doc.removeObject(o.Label)
-
-# take the input from the webserver and instantiate and draw the plate
-def build(data):
-    # create the result object
-    p = Plate(**data)
-    result = {
-        'formats': config.app['formats'],
-        'plates': p.layers,
-        'exports': p.exports
-    }
-    result = p.draw(result)
-    log.info("Finished drawing: %s", data['export_basename'])
-    return result # return the metadata result to the webserver
-
 

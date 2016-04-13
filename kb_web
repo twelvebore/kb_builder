@@ -18,7 +18,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import re
 
-import builder
 import hashlib
 import json
 import logging
@@ -29,6 +28,9 @@ from flask import Flask, jsonify, render_template, request
 import config
 
 # Setup the web config
+from builder import KeyboardCase, BOTTOM_LAYER, CLOSED_LAYER, OPEN_LAYER, \
+    SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER
+from builder import SIMPLE_LAYER
 config.app['formats'].append('json')
 config.app['formats'].append('js')
 
@@ -58,10 +60,11 @@ def root_post():
     data_hash = hashlib.sha1(json.dumps(data, sort_keys=True)).hexdigest()
 
     builder_args = {
+        'formats': config.app['formats'],
         'export_basename': data_hash,
-        'switch_type': data.get('switch-type'),
-        'stab_type': data.get('stab-type'),
-        'case_type': data.get('case-type'),
+        'switch_type': unicode(data.get('switch-type')),
+        'stab_type': unicode(data.get('stab-type')),
+        'case_type': unicode(data.get('case-type')),
         'mount_holes_num': int(data.get('mount-holes-num', 0)),
         'mount_holes_size': float(data.get('mount-holes-size', 4)),
         'width_padding': float(data.get('width-padding', 0)),
@@ -84,11 +87,36 @@ def root_post():
 
     build_start = time.time()
     logging.info("Processing: %s" % (data_hash))
-    cad = builder.build(builder_args)
+    case = KeyboardCase(**builder_args)
+
+    # Create the shape based layers
+    layers = (
+        (SIMPLE_LAYER, case.create_simple_bottom_layer),
+        (BOTTOM_LAYER, case.create_bottom_layer),
+        (CLOSED_LAYER, case.create_closed_layer),
+        (OPEN_LAYER, case.create_open_layer),
+    )
+    for layer, create_layer in layers:
+        if layer in case.layers:
+            plate = create_layer(oversize=case.oversize_distance if layer in case.oversize else 0)
+            case.export(plate, layer)
+
+    # Create the switch based layers
+    for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
+        if layer in case.layers:
+            plate = case.create_switch_layer(layer)
+            case.export(plate, layer)
+
     logging.info("Finished: %s" % (data_hash))
     logging.info("Processing took: {0:.2f} seconds".format(time.time()-build_start))
 
-    return jsonify(cad)
+    return jsonify({
+        'formats': config.app['formats'],
+        'plates': case.layers,
+        'exports': case.exports,
+        'width': case.width,
+        'height': case.height
+    })
 
 
 if __name__ == '__main__':
