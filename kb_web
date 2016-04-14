@@ -28,9 +28,7 @@ from flask import Flask, jsonify, render_template, request
 import config
 
 # Setup the web config
-from builder import KeyboardCase, BOTTOM_LAYER, CLOSED_LAYER, OPEN_LAYER, \
-    SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER
-from builder import SIMPLE_LAYER
+from builder import KeyboardCase
 config.app['formats'].append('json')
 config.app['formats'].append('js')
 
@@ -82,7 +80,8 @@ def root_post():
         'usb_offset': 0,
         'keyboard_layout': data.get('layout', ''),
         'oversize': [], # FIXME: Add ability to specify this
-        'oversize_distance': 2 # FIXME: Add ability to specify this
+        'oversize_distance': 2, # FIXME: Add ability to specify this
+        'foot_count': 2, # FIXME: Add ability to specify this
     }
 
     build_start = time.time()
@@ -91,10 +90,11 @@ def root_post():
 
     # Create the shape based layers
     layers = (
-        (SIMPLE_LAYER, case.create_simple_bottom_layer),
-        (BOTTOM_LAYER, case.create_bottom_layer),
-        (CLOSED_LAYER, case.create_closed_layer),
-        (OPEN_LAYER, case.create_open_layer),
+        # (layer_name, create_function)
+        ('simple', case.create_simple_bottom_layer),
+        ('bottom', case.create_bottom_layer),
+        ('closed', case.create_closed_layer),
+        ('open', case.create_open_layer),
     )
     for layer, create_layer in layers:
         if layer in case.layers:
@@ -102,7 +102,7 @@ def root_post():
             case.export(plate, layer)
 
     # Create the switch based layers
-    for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
+    for layer in ('switch', 'reinforcing', 'top'):
         if layer in case.layers:
             plate = case.create_switch_layer(layer)
             case.export(plate, layer)

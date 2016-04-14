@@ -11,26 +11,28 @@ import logging
 import sys
 from time import time
 import config
-from builder import KeyboardCase, BOTTOM_LAYER, CLOSED_LAYER, OPEN_LAYER, \
-    SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER
-from builder import SIMPLE_LAYER
+from builder import KeyboardCase
 
+
+# Setup logging
 logging.basicConfig()
 
 # Parse our command line args
 parser = argparse.ArgumentParser()
-parser.add_argument('-f', '--file', help='File containing the KLE data.')
+parser.add_argument('-f', '--file', help='File containing the KLE data')
 parser.add_argument('-n', '--name', help='Output file basename (Default: generate a hash or use -f)')
 parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, mx-open-rotatable, alps')
 parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
-parser.add_argument('--case-holes', default=8, type=int, help='Number of holes in the case (Default: 8)')
+parser.add_argument('--case-holes', default=8, type=int, help='Number of screw holes in the case (Default: 8)')
+parser.add_argument('--foot-hole', default=[], action='append', help="The X,Y location for a foot's screw-hole")
+parser.add_argument('--foot-count', default=0, type=int, help='Number of feet to include in the open/closed layers (Default: 1 per foot hole)')
 parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
 parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB')
 parser.add_argument('--usb-outer-width', default=14, type=float, help='Width for the USB connector cutout furthest from the PCB')
-parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector.')
-parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout.')
+parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector')
+parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
 parser.add_argument('--hole', default=[], action='append', help='Add a hole at X,Y,Diameter')
@@ -43,7 +45,8 @@ parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (D
 parser.add_argument('--add-format', default=[], action='append', help='Add a format to be exported (brp, stp, stl)')
 parser.add_argument('--output-dir', type=str, help='What directory to output files to (Default: %s)' % config.app['export'])
 parser.add_argument('--oversize', default=[], action='append', help='Make a layer larger than the other layers')
-parser.add_argument('--oversize-distance', type=int, default=4, help='How much larger an oversized layer is.')
+parser.add_argument('--oversize-distance', type=int, default=4, help='How much larger an oversized layer is')
+parser.add_argument('--only', help="Only create a single layer.")
 args = parser.parse_args()
 
 # Make sure the corners are specified correctly
@@ -83,6 +86,13 @@ if args.hole:
         if x[0] == '\\':
             x = x[1:]
         holes.append((float(x), float(y), float(diameter)))
+
+# Figure out how many feet to include
+if args.foot_hole and not args.foot_count:
+    args.foot_count = len(args.foot_hole)
+
+for i, foot in enumerate(args.foot_hole):
+    args.foot_hole[i] = map(float, foot.split(','))
 
 # Determine what formats to support
 for format in args.add_format:
@@ -125,7 +135,9 @@ if __name__ == '__main__':
         'usb_offset': args.usb_offset,
         'keyboard_layout': layout,
         'oversize': args.oversize,
-        'oversize_distance': args.oversize_distance
+        'oversize_distance': args.oversize_distance,
+        'foot_count': args.foot_count,
+        'foot_holes': args.foot_hole
     }
 
     # Figure out the export file name
@@ -163,35 +175,45 @@ if __name__ == '__main__':
         builder_args['holes'] = holes
 
     # Build the plate
-    build_start = time.time()
+    build_start = time()
     logging.info("Processing: %s" % (export_basename))
     case = KeyboardCase(**builder_args)
 
     # Create the shape based layers
     layers = (
-        (SIMPLE_LAYER, case.create_simple_bottom_layer),
-        (BOTTOM_LAYER, case.create_bottom_layer),
-        (CLOSED_LAYER, case.create_closed_layer),
-        (OPEN_LAYER, case.create_open_layer),
+        # (layer_name, create_function)
+        ('simple', case.create_simple_bottom_layer),
+        ('bottom', case.create_bottom_layer),
+        ('closed', case.create_closed_layer),
+        ('open', case.create_open_layer),
     )
     for layer, create_layer in layers:
+        if args.only and args.only != layer:
+            continue
+
         if layer in case.layers:
             plate = create_layer(oversize=case.oversize_distance if layer in case.oversize else 0)
             case.export(plate, layer)
 
     # Create the switch based layers
-    for layer in (SWITCH_LAYER, REINFORCING_LAYER, TOP_LAYER):
+    for layer in ('switch', 'reinforcing', 'top'):
+        if args.only and args.only != layer:
+            continue
+
         if layer in case.layers:
             plate = case.create_switch_layer(layer)
             case.export(plate, layer)
 
     logging.info("Finished: %s" % (export_basename))
-    logging.info("Processing took: {0:.2f} seconds".format(time.time()-build_start))
+    logging.info("Processing took: {0:.2f} seconds".format(time()-build_start))
 
     # Display info about the plates
     print '**** Overall plate size: %s x %s mm' % (case.width, case.height)
 
-    for plate in case.layers:
-        print '*** Files exported for plate', plate
-        for file in case.exports[plate]:
+    for layer in case.layers:
+        if args.only and args.only != layer:
+            continue
+
+        print '*** Files exported for plate', layer
+        for file in case.exports[layer]:
             print '*', file['url'][1:]
