@@ -32,6 +32,7 @@ parser.add_argument('--usb-offset', default=0, type=float, help='Offset from cen
 parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB')
 parser.add_argument('--usb-outer-width', default=14, type=float, help='Width for the USB connector cutout furthest from the PCB')
 parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector')
+parser.add_argument('--usb-layer', default=['open'], action='append', help='Add the USB cutout to a layer')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout')
 parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
 parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
@@ -133,6 +134,7 @@ if __name__ == '__main__':
         'usb_outer_width': args.usb_outer_width,
         'usb_height': args.usb_height,
         'usb_offset': args.usb_offset,
+        'usb_layers': args.usb_layer,
         'keyboard_layout': layout,
         'oversize': args.oversize,
         'oversize_distance': args.oversize_distance,
@@ -182,7 +184,7 @@ if __name__ == '__main__':
     # Create the shape based layers
     layers = (
         # (layer_name, create_function)
-        ('simple', case.create_simple_bottom_layer),
+        ('simple', case.init_plate),
         ('bottom', case.create_bottom_layer),
         ('closed', case.create_closed_layer),
         ('open', case.create_open_layer),

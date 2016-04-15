@@ -77,7 +77,7 @@ class KeyboardCase(object):
                  pcb_width_padding=0, mount_holes_num=0, mount_holes_size=0,
                  thickness=1.5, holes=None, reinforcing=False, oversize=None,
                  oversize_distance=4, formats=None, foot_holes=None,
-                 foot_count=None):
+                 foot_count=None, usb_layers=None):
         # User settable things
         self.export_basename = export_basename
         self.case = {'type': case_type}
@@ -98,6 +98,7 @@ class KeyboardCase(object):
         self.usb_outer_width = usb_outer_width
         self.usb_height = usb_height
         self.usb_offset = usb_offset
+        self.usb_layers = usb_layers if usb_layers else ['open']
         self.x_pad = width_padding
         self.x_pcb_pad = pcb_width_padding / 2
         self.y_pad = height_padding
@@ -141,31 +142,22 @@ class KeyboardCase(object):
         # Determine the size of each key
         self.parse_layout()
 
-    def create_simple_bottom_layer(self, oversize=0):
-        """Returns a copy of the simple bottom layer ready to export.
-        """
-        p = self.init_plate(oversize=oversize)
-
-        return p
-
     def create_bottom_layer(self, oversize=0):
         """Returns a copy of the bottom layer ready to export.
         """
-        p = self.create_simple_bottom_layer(oversize=oversize)
-        p = self.recenter(p)
-        p = self.cut_usb_hole(p, oversize=oversize)
-        p = self.cut_for_usb_shield(p)
-        p = self.cut_feet_holes(p)
+        plate = self.init_plate(oversize=oversize)
+        plate = self.cut_feet_holes(plate)
+        plate = self.cut_usb_hole(plate, 'bottom', oversize=oversize)
 
-        return p
+        return plate
 
     def create_closed_layer(self, oversize=0):
         """Returns a copy of the closed layer ready to export.
 
         We stash nifty things like the feet in the closed layer.
         """
-        p = self.create_simple_bottom_layer(oversize=oversize)
-        p = p.center(self.width/2 + self.kerf, self.height/2 + self.kerf) # move to center of the plate
+        plate = self.init_plate(oversize=oversize)
+        plate = self.recenter(plate)
         outline_points = [
             (-self.width/2+self.x_pad+self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
             (self.width/2-self.x_pad-self.kerf*2, -self.height/2+self.y_pad+self.kerf*2),
@@ -176,23 +168,23 @@ class KeyboardCase(object):
         left_edge = (-self.width/2+self.x_pad+self.x_pcb_pad+self.kerf*2)+5
         top_edge = (-self.height/2+self.y_pad+self.y_pcb_pad+self.kerf*2)+5
 
-        p = p.polyline(outline_points)  # Cut the internal outline
-        p = p.center(left_edge, top_edge)
+        plate = plate.polyline(outline_points)  # Cut the internal outline
+        plate = plate.center(left_edge, top_edge)
         distance_moved = 0
 
         for i in range(self.foot_count):
-            p = p.polyline(FOOT_POINTS).center(15, 0)  # Add a foot
+            plate = plate.polyline(FOOT_POINTS).center(15, 0)  # Add a foot
             distance_moved += 15
 
-        p = p.center(-left_edge-distance_moved,-top_edge).cutThruAll()  # Return to center and cut
+        plate = plate.center(-left_edge-distance_moved,-top_edge).cutThruAll()  # Return to center and cut
 
-        return p
+        return plate
 
     def create_open_layer(self, oversize=0):
         """Returns a copy of the open layer ready to export.
         """
         plate = self.create_closed_layer(oversize=oversize)
-        plate = self.cut_usb_hole(plate, oversize=oversize)
+        plate = self.cut_usb_hole(plate, 'open', oversize=oversize)
 
         return plate
 
@@ -205,14 +197,12 @@ class KeyboardCase(object):
         prev_y_off = 0
         oversize = self.oversize_distance if layer in self.oversize else 0
 
-        p = self.init_plate(oversize=oversize)
-        p = self.cut_usb_hole(p, oversize=oversize)
-        p = self.recenter(p)
-        p = self.center(p, -self.width/2+self.kerf, -self.height/2+self.kerf) # move to top left of the plate
+        plate = self.init_plate(oversize=oversize)
+        plate = self.center(plate, -self.width/2+self.kerf, -self.height/2+self.kerf) # move to top left of the plate
 
         if layer != 'top':
             # Put holes into switch/reinforcing plates
-            p = self.cut_switch_plate_holes(p)
+            plate = self.cut_switch_plate_holes(plate)
 
         for r, row in enumerate(self.layout):
             for k, key in enumerate(row):
@@ -225,13 +215,13 @@ class KeyboardCase(object):
                     y = key['y']*KEY_UNIT
 
                 if r == 0 and k == 0: # handle placement of the first key in first row
-                    p = self.center(p, key['w'] * KEY_UNIT / 2, KEY_UNIT / 2)
+                    plate = self.center(plate, key['w'] * KEY_UNIT / 2, KEY_UNIT / 2)
                     x += (self.x_pad+self.x_pcb_pad)
                     y += (self.y_pad+self.y_pcb_pad)
                     # set x_off negative since the 'cut_switch' will append 'x' and we need to account for initial spacing
                     self.x_off = -(x - (KEY_UNIT/2 + key['w']*KEY_UNIT/2) - kx)
                 elif k == 0: # handle changing rows
-                    p = self.center(p, -self.x_off, KEY_UNIT) # move to the next row
+                    plate = self.center(plate, -self.x_off, KEY_UNIT) # move to the next row
                     self.x_off = 0 # reset back to the left side of the plate
                     x += KEY_UNIT/2 + key['w']*KEY_UNIT/2
                 else: # handle all other keys
@@ -246,28 +236,32 @@ class KeyboardCase(object):
                     y += prev_y_off
 
                 # Cut the switch hole
-                p = self.cut_switch(p, (x, y), key, layer)
+                plate = self.cut_switch(plate, (x, y), key, layer)
                 prev_width = key['w']
 
-        return p
+        plate = self.recenter(plate)
+        plate = self.cut_usb_hole(plate, layer, oversize=oversize)
+        return plate
 
     def cut_feet_holes(self, plate):
         """Cut the mounting points for the feet.
         """
         plate = self.recenter(plate)
         for foot_hole in self.foot_holes:
-            plate = self.center(plate, -self.width/2+self.kerf, -self.height/2+self.kerf) # move to top left of the plate
-            plate = self.center(plate, *foot_hole).circle(2)  # Add screw hole
             points = [(4.5,4.5), (4.5,-4.5), (-4.5,-4.5), (-4.5,4.5), (4.5,4.5)]
+            plate = self.center(plate, -self.width/2+self.kerf, -self.height/2+self.kerf) # move to top left of the plate
+            plate = self.center(plate, *foot_hole).circle(2).cutThruAll()  # Add screw hole
             plate = plate.center(0, 60).polyline(points).center(0, -60)  # Add square hole
-            plate = self.recenter(plate)
+            plate = self.recenter(plate).cutThruAll()
 
-        return plate.cutThruAll()
+        return plate
 
-    def cut_usb_hole(self, plate, oversize=0):
+    def cut_usb_hole(self, plate, layer, oversize=0):
         """Cut the opening that allows for the USB hole. Assumes the drawing is already centered.
         """
-        plate = self.center(plate, 0, -self.height / 2 + (self.y_pad + self.y_pcb_pad) / 2 + self.kerf) # Move up to where the USB connector will be.
+        if layer not in self.usb_layers:
+            return plate.cutThruAll()
+
         points = [
             (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf),
             (self.usb_outer_width/2+self.usb_offset-self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf),
@@ -277,19 +271,22 @@ class KeyboardCase(object):
             (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
             (-self.usb_outer_width/2+self.usb_offset+self.kerf, -(self.y_pad+self.y_pcb_pad)/2-oversize/2-self.kerf)
         ]
-        plate = plate.polyline(points).cutThruAll()
+        y_distance = -self.height / 2 + (self.y_pad + self.y_pcb_pad) / 2 + self.kerf
+        plate = plate.center(0, y_distance).polyline(points)
+
+        if layer == 'bottom':
+            points = [
+                (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
+                (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
+                (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
+                (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf)
+            ]
+            plate = plate.polyline(points)
+
+        plate = plate.center(0, -y_distance).cutThruAll()
 
         return plate
-
-    def cut_for_usb_shield(self, plate):
-        points = [
-            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
-            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf),
-            (-self.usb_inner_width/2+self.usb_offset+self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
-            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf+self.usb_height),
-            (self.usb_inner_width/2+self.usb_offset-self.kerf, (self.y_pad+self.y_pcb_pad)/2+self.kerf)
-        ]
-        return plate.polyline(points).cutThruAll()
 
     def cut_switch_plate_holes(self, plate):
         """Cut any holes specified for the switch/reinforcing plate.
@@ -353,14 +350,13 @@ class KeyboardCase(object):
 
         If oversize is greater than 0 the layer will be made that many mm larger than default, while keeping screws in the same position.
         """
-        p = cadquery.Workplane("front").box(self.width+oversize, self.height+oversize, self.thickness)
-        self.origin = (0,0)
+        plate = cadquery.Workplane("front").box(self.width+oversize, self.height+oversize, self.thickness)
 
         # Cut the corners if necessary
         if self.corners > 0 and self.corner_type == 'round':
-            p = p.edges("|Z").fillet(self.corners)
+            plate = plate.edges("|Z").fillet(self.corners)
 
-        p = p.faces("<Z").workplane()
+        plate = plate.faces("<Z").workplane()
 
         if self.corners > 0:
             if self.corner_type == 'beveled':
@@ -369,25 +365,25 @@ class KeyboardCase(object):
                     (self.horizontal_edge, self.vertical_edge - self.corners), (self.horizontal_edge, self.vertical_edge),
                     (self.horizontal_edge - self.corners, self.vertical_edge), (self.horizontal_edge, self.vertical_edge - self.corners),
                 )
-                p = p.polyline(points).cutThruAll()
+                plate = plate.polyline(points)
                 # Lower left corner
                 points = (
                     (-self.horizontal_edge, self.vertical_edge - self.corners), (-self.horizontal_edge, self.vertical_edge),
                     (-self.horizontal_edge + self.corners, self.vertical_edge), (-self.horizontal_edge, self.vertical_edge - self.corners),
                 )
-                p = p.polyline(points).cutThruAll()
+                plate = plate.polyline(points)
                 # Upper right corner
                 points = (
                     (self.horizontal_edge, -self.vertical_edge + self.corners), (self.horizontal_edge, -self.vertical_edge),
                     (self.horizontal_edge - self.corners, -self.vertical_edge), (self.horizontal_edge, -self.vertical_edge + self.corners),
                 )
-                p = p.polyline(points).cutThruAll()
+                plate = plate.polyline(points)
                 # Upper left corner
                 points = (
                     (-self.horizontal_edge, -self.vertical_edge + self.corners), (-self.horizontal_edge, -self.vertical_edge),
                     (-self.horizontal_edge + self.corners, -self.vertical_edge), (-self.horizontal_edge, -self.vertical_edge + self.corners),
                 )
-                p = p.polyline(points).cutThruAll()
+                plate = plate.polyline(points)
             elif self.corner_type != 'round':
                 log.error('Unknown corner type %s!', self.corner_type)
 
@@ -398,33 +394,35 @@ class KeyboardCase(object):
             rect_points = [(rect_center,9.2), (-rect_center,9.2)] # edge slots
             rect_size = (3.5, 5) # edge slot cutout to edge
             for c in hole_points:
-                p = p.center(c[0], c[1]).hole(self.case['hole_diameter']).center(-c[0],-c[1])
+                plate = plate.center(c[0], c[1]).hole(self.case['hole_diameter']).center(-c[0],-c[1])
             for c in rect_points:
-                p = p.center(c[0], c[1]).rect(rect_size[0], rect_size[1]).center(-c[0],-c[1])
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+                plate = plate.center(c[0], c[1]).rect(rect_size[0], rect_size[1]).center(-c[0],-c[1])
         elif self.case['type'] == 'sandwich':
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+            plate = self.center(plate, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
             if 'holes' in self.case and self.case['holes'] >= 4 and 'x_holes' in self.case and 'y_holes' in self.case:
                 self.layout_sandwich_holes()
                 radius = self.case['hole_diameter']/2 - self.kerf
                 x_gap = (self.width - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['x_holes'] + 1)
                 y_gap = (self.height - 2*self.case['hole_diameter'] - 2*self.kerf + 1)/(self.case['y_holes'] + 1)
-                p = p.center(self.case['hole_diameter']-.5, self.case['hole_diameter']-.5)
+                hole_distance = self.case['hole_diameter'] - .5
+                plate = plate.center(hole_distance, hole_distance)
                 for i in range(self.case['x_holes'] + 1):
-                    p = self.center(p, x_gap,0).circle(radius).cutThruAll()
+                    plate = plate.center(x_gap,0).circle(radius)
                 for i in range(self.case['y_holes'] + 1):
-                    p = self.center(p, 0,y_gap).circle(radius).cutThruAll()
+                    plate = plate.center(0,y_gap).circle(radius)
                 for i in range(self.case['x_holes'] + 1):
-                    p = self.center(p, -x_gap,0).circle(radius).cutThruAll()
+                    plate = plate.center(-x_gap,0).circle(radius)
                 for i in range(self.case['y_holes'] + 1):
-                    p = self.center(p, 0,-y_gap).circle(radius).cutThruAll()
-                p.center(-self.case['hole_diameter']+.5, -self.case['hole_diameter']+.5)
+                    plate = plate.center(0,-y_gap).circle(radius)
+                plate = plate.center(-hole_distance, -hole_distance)
+            plate = self.center(plate, self.width/2 + self.kerf, self.height/2 + self.kerf) # move to center of the plate
         elif not self.case['type'] or self.case['type'] == 'reinforcing':
-            p = self.center(p, -self.width/2 + self.kerf, -self.height/2 + self.kerf) # move to top left of the plate
+            pass
         else:
             log.error('Unknown case type: %s', self.case['type'])
 
-        return p
+        self.origin = (0,0)
+        return plate.cutThruAll()
 
     def layout_sandwich_holes(self):
         """Determine where screw holes should be placed.
@@ -487,7 +485,6 @@ class KeyboardCase(object):
             (0,0)  # Upper left corner
         ]
         points = [(0,0), (0,1), (1,1), (1,0), (0,0)]
-        print 'points', points
 
         return plate.polyline(points).wire()
 

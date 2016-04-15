@@ -91,7 +91,7 @@ def root_post():
     # Create the shape based layers
     layers = (
         # (layer_name, create_function)
-        ('simple', case.create_simple_bottom_layer),
+        ('simple', case.init_plate),
         ('bottom', case.create_bottom_layer),
         ('closed', case.create_closed_layer),
         ('open', case.create_open_layer),
