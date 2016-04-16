@@ -29,8 +29,8 @@ parser.add_argument('--foot-hole', default=[], action='append', help="The X,Y lo
 parser.add_argument('--foot-count', default=0, type=int, help='Number of feet to include in the open/closed layers (Default: 1 per foot hole)')
 parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
 parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
-parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB')
-parser.add_argument('--usb-outer-width', default=14, type=float, help='Width for the USB connector cutout furthest from the PCB')
+parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB (Default: 10)')
+parser.add_argument('--usb-outer-width', default=15, type=float, help='Width for the USB connector cutout furthest from the PCB (Default: 15)')
 parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector')
 parser.add_argument('--usb-layer', default=['open'], action='append', help='Add the USB cutout to a layer')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout')
@@ -210,7 +210,8 @@ if __name__ == '__main__':
     logging.info("Processing took: {0:.2f} seconds".format(time()-build_start))
 
     # Display info about the plates
-    print '**** Overall plate size: %s x %s mm' % (case.width, case.height)
+    print '*** Overall plate size: %s x %s mm' % (case.width, case.height)
+    print '*** PCB cutout size: %s x %s mm' % (case.inside_width, case.inside_height)
 
     for layer in case.layers:
         if args.only and args.only != layer:
