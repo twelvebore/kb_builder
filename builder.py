@@ -988,8 +988,37 @@ class KeyboardCase(object):
                 plate = plate.polyline(points_l).cutThruAll()
                 plate = plate.polyline(points_r).cutThruAll()
             elif stab_type == 'alps':
-                # FIXME: Pull this in from your stashed patch
-                log.error('Vintage alps stabilizers for spacebar not implemented!')
+                # Alps stabilizers
+                if width == 6.5:
+                    inside_x = alps_stab_inside_x + 31.3
+                else:
+                    log.error("We don't know how far apart stabs are for alps of %s width!" % width)
+                    inside_x = alps_stab_inside_x + 30
+
+                outside_x = inside_x + 2.7 - self.kerf*2
+                points_r = [
+                    (inside_x, alps_stab_top_y),
+                    (outside_x, alps_stab_top_y),
+                    (outside_x, alps_stab_bottom_y),
+                    (inside_x, alps_stab_bottom_y),
+                    (inside_x, alps_stab_top_y)
+                ]
+                points_l = [
+                    (-inside_x, alps_stab_top_y),
+                    (-outside_x, alps_stab_top_y),
+                    (-outside_x, alps_stab_bottom_y),
+                    (-inside_x, alps_stab_bottom_y),
+                    (-inside_x, alps_stab_top_y)
+                ]
+
+                if rotate:
+                    points_l = self.rotate_points(points_l, 90, (0, 0))
+                    points_r = self.rotate_points(points_r, 90, (0, 0))
+                if rotate_stab:
+                    points_l = self.rotate_points(points_l, rotate_stab, (0, 0))
+                    points_r = self.rotate_points(points_r, rotate_stab, (0, 0))
+                plate = plate.polyline(points_l).cutThruAll()
+                plate = plate.polyline(points_r).cutThruAll()
             else:
                 log.error('Unknown stab type %s! No stabilizer cut', stab_type)
 
