@@ -158,17 +158,19 @@ class KeyboardCase(object):
             # Feet that are drawn in the closed/open layers. Sized for 9-10mm M4.
             (3-self.kerf,0-self.kerf),                  # Upper left corner
             (9+self.kerf,0-self.kerf),                  # Upper right corner start
-            (13+self.kerf,4-self.kerf),                 # Upper right corner end
-            (7+self.kerf,71+self.kerf),                 # Lower right corner
-            (0-self.kerf,71+self.kerf),                 # Lower left corner
+            (14+self.kerf,4-self.kerf),                 # Upper right corner end
+            (5+self.kerf,91+self.kerf),                 # Lower right corner
+            (3-self.kerf,91+self.kerf),                 # Lower left corner
+            (3-self.kerf,71+self.kerf),                 # Lower right of key
+            (0-self.kerf,71+self.kerf),                 # Lower left of key
             (0-self.kerf,62-self.kerf),                 # Top of the key for the bottom plate
             (3-self.kerf,62-self.kerf),                 # Inside corner of the key
-            (3-self.kerf,7.25-self.kerf), (5+self.kerf,7.25-self.kerf),       # Start of the nut cutout
+            (3-self.kerf,7.5-self.kerf), (5+self.kerf,7.5-self.kerf),       # Start of the nut cutout
             (5+self.kerf,9.1-self.kerf), (7.2-self.kerf,9.1-self.kerf),       # Bottom edge of the nut cutout
-            (7.2-self.kerf,7.25-self.kerf), (9.2-self.kerf,7.25-self.kerf),  # Bottom-right edge of the screw cutout
-            (9.2-self.kerf,5.25+self.kerf), (7.2-self.kerf,5.25+self.kerf),  # Top-right edge of the screw cutout
-            (7.2-self.kerf,3.4+self.kerf), (5+self.kerf,3.4+self.kerf),         # Top edge of the nut cutout
-            (5+self.kerf,5.25+self.kerf), (3-self.kerf,5.25+self.kerf),       # End of the screw cutout
+            (7.2-self.kerf,7.5-self.kerf), (9.2-self.kerf,7.5-self.kerf),  # Bottom-right edge of the screw cutout
+            (9.2-self.kerf,4.5+self.kerf), (7.2-self.kerf,4.5+self.kerf),  # Top-right edge of the screw cutout
+            (7.2-self.kerf,2.9+self.kerf), (5+self.kerf,2.9+self.kerf),         # Top edge of the nut cutout
+            (5+self.kerf,4.5+self.kerf), (3-self.kerf,4.5+self.kerf),       # End of the screw cutout
             (3-self.kerf,0-self.kerf)                   # Upper left corner
         ]
         plate = self.init_plate(oversize=oversize)
@@ -272,7 +274,7 @@ class KeyboardCase(object):
             ]
             plate = self.center(plate, -self.width/2, -self.height/2) # move to top left of the plate
             plate = self.center(plate, *foot_hole).circle(self.foot_hole_diameter/2).cutThruAll()  # Add screw hole
-            plate = plate.center(0, 59).polyline(points).center(0, -59)  # Add square hole
+            plate = plate.center(0, 60).polyline(points).center(0, -60)  # Add square hole
             plate = self.recenter(plate).cutThruAll()
 
         return plate
@@ -487,29 +489,6 @@ class KeyboardCase(object):
             )
 
         return map(calculate_points, points)
-
-    def draw_foot(self, plate):
-        """Draw a foot at the current location.
-
-        Unlike other functions, which cut through an existing shape, this one
-        creates a shape within the empty space of an open layer.
-        """
-        points = [
-            (0,0),  # Upper left corner
-            (10,0),  # Upper right corner
-            (3,68),  # Lower right corner
-            (-3,68),  # Lower left corner
-            (-3,65),  # Top of the key for the bottom plate
-            (0,65),  # Inside corner of the key
-            (0,17),  # Start of the screw cutout
-            (2,17), (2,19), (4,19), (4,17), (6,17),
-            (6,15), (4,15), (4,13), (2,13), (2,15),
-            (0,15),  # End of the screw cutout
-            (0,0)  # Upper left corner
-        ]
-        points = [(0,0), (0,1), (1,1), (1,0), (0,0)]
-
-        return plate.polyline(points).wire()
 
     def cut_switch(self, plate, switch_coord, key=None, layer='switch'):
         """Cut a switch opening
