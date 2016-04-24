@@ -5,53 +5,62 @@ By default this reads the data on stdin. You can also use --file to pass data
 in through a file.
 """
 import argparse
-import hashlib
 import hjson
 import logging
 import sys
+sys.path.append('src')
 from time import time
-import config
-from builder import KeyboardCase
+from kb_builder.builder import KeyboardCase
 
-
-# Setup logging
-logging.basicConfig()
 
 # Parse our command line args
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--file', help='File containing the KLE data')
 parser.add_argument('-n', '--name', help='Output file basename (Default: generate a hash or use -f)')
+parser.add_argument('-v', '--verbose', action='store_true', help='Verbose log output')
+parser.add_argument('-vv', action='store_true', help='Really verbose log output')
+parser.add_argument('-vvv', action='store_true', help='Ludicrisly verbose log output')
 parser.add_argument('--switch', help='Switch type: mx, (*)alpsmx, mx-open, mx-open-rotatable, alps')
 parser.add_argument('--stab', help='Stabilizer type: cherry, costar, (*)cherry-costar, alps, matias')
+parser.add_argument('--layer', default=[], action='append', help='A layer to draw. Must be specified at least once.')
 parser.add_argument('--case', help='Case type: (*)none, poker, sandwich')
-parser.add_argument('--case-holes', default=8, type=int, help='Number of screw holes in the case (Default: 8)')
+parser.add_argument('--case-holes', type=int, help='Number of screw holes in the case (Default: 0)')
+parser.add_argument('--hole-radius', type=float, help='Case screw hole radius in mm (Default: 2)')
 parser.add_argument('--foot-hole', default=[], action='append', help="The X,Y location for a foot's screw-hole")
-parser.add_argument('--foot-count', default=0, type=int, help='Number of feet to include in the open/closed layers (Default: 1 per foot hole)')
-parser.add_argument('--hole-diameter', default=5, type=float, help='Case hole size in mm (Default: 5)')
-parser.add_argument('--usb-offset', default=0, type=float, help='Offset from center for USB connector')
-parser.add_argument('--usb-inner-width', default=10, type=float, help='Width for the USB connector cutout closest to the PCB (Default: 10)')
-parser.add_argument('--usb-outer-width', default=15, type=float, help='Width for the USB connector cutout furthest from the PCB (Default: 15)')
-parser.add_argument('--usb-height', default=6, type=float, help='How far down the bottom plate to cut to allow for the USB connector')
-parser.add_argument('--usb-layer', default=['open'], action='append', help='Add the USB cutout to a layer')
+parser.add_argument('--foot-count', type=int, help='Number of feet to include in the open/closed layers (Default: 1 per foot hole)')
+parser.add_argument('--usb-offset', type=float, help='Offset from center for USB connector')
+parser.add_argument('--usb-inner-width', type=float, help='Width for the USB connector cutout closest to the PCB (Default: 0)')
+parser.add_argument('--usb-outer-width', type=float, help='Width for the USB connector cutout furthest from the PCB (Default: 0)')
+parser.add_argument('--usb-height', type=float, help='How far down the bottom plate to cut to allow for the USB connector')
+parser.add_argument('--usb-layer', default=[], action='append', help='Add the USB cutout to a layer')
 parser.add_argument('--reinforcing', default=False, action='store_true', help='Add the reinforcing plate to a non-case layout')
-parser.add_argument('--height', default=6, type=float, help='Amount to pad the height (Default: 6)')
-parser.add_argument('--width', default=6, type=float, help='Amount to pad the width (Default: 6)')
-parser.add_argument('--hole', default=[], action='append', help='Add a hole at X,Y,Diameter')
+parser.add_argument('--height', type=float, help='Amount to pad the height (Default: 0)')
+parser.add_argument('--width', type=float, help='Amount to pad the width (Default: 0)')
+parser.add_argument('--hole', default=[], action='append', help='Add a hole at Layer,X,Y,Diameter')
 parser.add_argument('--pcb-height', default=0, type=float, help='Amount to pad the height of the cutout to accommodate a pcb (Default: 0)')
 parser.add_argument('--pcb-width', default=0, type=float, help='Amount to pad the width of the cutout to accommodate a pcb (Default: 0)')
 parser.add_argument('--corners', default=0, type=float, help='Radius for corners, 0 to disable (Default: 0)')
-parser.add_argument('--corner-type', default='round', type=str, help='What kind of corners to make (*round, beveled)')
+parser.add_argument('--corner-type', type=str, help='What kind of corners to make (*round, bevel)')
 parser.add_argument('--thickness', default=0, type=float, help='Plate thickness, 0 to disable (Default: 0)')
 parser.add_argument('--kerf', default=0, type=float, help='Kerf, 0 to disable (Default: 0)')
-parser.add_argument('--add-format', default=[], action='append', help='Add a format to be exported (brp, stp, stl)')
-parser.add_argument('--output-dir', type=str, help='What directory to output files to (Default: %s)' % config.app['export'])
+parser.add_argument('--add-format', default=['dxf'], action='append', help='Add a format to be exported (brp, stp, stl)')
+parser.add_argument('--output-dir', type=str, default='static/exports', help='What directory to output files to (Default: static/exports)')
 parser.add_argument('--oversize', default=[], action='append', help='Make a layer larger than the other layers')
 parser.add_argument('--oversize-distance', type=int, default=4, help='How much larger an oversized layer is')
-parser.add_argument('--only', help="Only create a single layer.")
 args = parser.parse_args()
 
+# Setup logging
+if args.vvv:
+    logging.basicConfig(level=1)
+if args.vv:
+    logging.basicConfig(level=9)
+elif args.verbose:
+    logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.INFO)
+
 # Make sure the corners are specified correctly
-if args.corner_type not in ('round', 'beveled'):
+if args.corner_type and args.corner_type not in ('round', 'bevel'):
     logging.error('Incorrect corner type: %s', args.corner_type)
     exit(1)
 
@@ -60,33 +69,20 @@ if args.switch:
     if args.switch not in ('mx', 'alpsmx', 'mx-open', 'mx-open-rotatable', 'alps'):
         logging.error('Unknown switch type: %s', args.switch)
         exit(1)
-else:
-    args.switch = 'mx'
 
 # Figure out what kind of stab it is
 if args.stab:
     if args.stab not in ('cherry', 'costar', 'cherry-costar', 'matias', 'alps'):
         logging.error('Unknown stab type: %s', args.stab)
         exit(1)
-else:
-    args.stab = 'cherry-costar'
 
 # Figure out what kind of case it is
 if args.case:
     if args.case == 'none':
         args.case = ''
-    elif args.case not in ('none', 'poker', 'sandwich'):
+    elif args.case not in ('poker', 'sandwich'):
         logging.error('Unknown case type: %s', args.case)
         exit(1)
-
-# Add any designated holes
-holes = []
-if args.hole:
-    for hole in args.hole:
-        x, y, diameter = hole.split(',')  # Make sure it's in the right format
-        if x[0] == '\\':
-            x = x[1:]
-        holes.append((float(x), float(y), float(diameter)))
 
 # Figure out how many feet to include
 if args.foot_hole and not args.foot_count:
@@ -94,14 +90,6 @@ if args.foot_hole and not args.foot_count:
 
 for i, foot in enumerate(args.foot_hole):
     args.foot_hole[i] = map(float, foot.split(','))
-
-# Determine what formats to support
-for format in args.add_format:
-    config.app['formats'].append(format)
-
-# Set our output directory
-if args.output_dir:
-    config.app['export'] = args.output_dir
 
 # MAIN
 if __name__ == '__main__':
@@ -113,73 +101,131 @@ if __name__ == '__main__':
         layout = sys.stdin.read()
 
     layout = '{"layout": [' + layout + ']}'
+    #print layout
     layout = hjson.loads(layout)['layout']
-    builder_args = {
-        'formats': config.app['formats'],
-        'switch_type': args.switch,
-        'stab_type': args.stab,
-        'case_type': args.case,
-        'mount_holes_num': args.case_holes,
-        'mount_holes_size': args.hole_diameter,
-        'width_padding': args.width,
-        'height_padding': args.height,
-        'pcb_width_padding': args.pcb_width,
-        'pcb_height_padding': args.pcb_height,
-        'corners': args.corners,
-        'corner_type': args.corner_type,
-        'thickness': args.thickness,
-        'kerf': args.kerf,
-        'reinforcing': args.reinforcing,
-        'usb_inner_width': args.usb_inner_width,
-        'usb_outer_width': args.usb_outer_width,
-        'usb_height': args.usb_height,
-        'usb_offset': args.usb_offset,
-        'usb_layers': args.usb_layer,
-        'keyboard_layout': layout,
-        'oversize': args.oversize,
-        'oversize_distance': args.oversize_distance,
-        'foot_count': args.foot_count,
-        'foot_holes': args.foot_hole
-    }
 
-    # Figure out the export file name
+    if not isinstance(layout[0], dict):
+        logging.debug("Keyboard property dictionary not found. Adding one.")
+        layout.insert(0, {})
+
+    if args.switch:
+        logging.debug('Setting the keyboard switch to %s', args.switch)
+        layout[0]['switch'] = args.switch
+    elif 'switch' not in layout[0]:
+        logging.debug('Setting the keyboard switch to the default: mx')
+        layout[0]['switch'] = 'mx'
+
+    if args.stab:
+        logging.debug('Setting the keyboard stabilizer to %s', args.stab)
+        layout[0]['stabilizer'] = args.stab
+    elif 'stabilizer' not in layout[0]:
+        logging.debug('Setting the keyboard stabilizer to the default: cherry')
+        layout[0]['stabilizer'] = 'cherry'
+
+    if args.width or args.height:
+        logging.debug('Setting the keyboard padding: %s,%s', args.width, args.height)
+        layout[0]['padding'] = (args.width, args.height)
+
+    if args.pcb_width or args.pcb_height:
+        logging.debug('Setting the keyboard pcb-padding: %s,%s', args.pcb_width, args.pcb_height)
+        layout[0]['padding'] = (args.pcb_width, args.pcb_height)
+
+    if args.corners:
+        logging.debug('Setting the corner radius: %s', args.corners)
+        layout[0]['corner_radius'] = args.corners
+
+    if args.corner_type:
+        logging.debug('Setting the corner type to %s', args.corner_type)
+        layout[0]['corner_type'] = args.corner_type
+    elif 'corner_type' not in layout[0]:
+        logging.debug('Setting the corner type to the default: round')
+        layout[0]['corner_type'] = 'round'
+
+    if args.kerf:
+        logging.debug('Setting kerf to %s', args.kerf)
+        layout[0]['kerf'] = args.kerf
+
     if args.name:
-        export_basename = args.name
-    elif args.file:
-        export_basename = args.file
+        logging.debug('Setting name to %s', args.name)
+        layout[0]['name'] = args.name
+
+    if 'case' in layout[0]:
+        if args.case:
+            logging.debug('Setting case type to %s', args.case)
+            layout[0]['case']['type'] = args.case
+        if args.case_holes:
+            logging.debug('Setting case holes to %s', args.case_holes)
+            layout[0]['case']['screw_count'] = args.case_holes
+        if args.hole_radius:
+            logging.debug('Setting case screw size to %s', args.hole_radius)
+            layout[0]['case']['screw_size'] = args.hole_radius
     else:
-        export_basename = hjson.dumps(builder_args, sort_keys=True)
-        export_basename = hashlib.sha1(export_basename).hexdigest()
-    builder_args['export_basename'] = export_basename
+        if args.case:
+            layout[0]['case'] = {
+                'type': args.case,
+                'screw_count': args.case_holes or 4,
+                'screw_size': args.hole_radius or 2
+            }
+            logging.debug('Setting up the case parameters: %s', layout[0]['case'])
 
-    # Remove default options
-    if args.case == '':
-        del(builder_args['mount_holes_size'])
-        del(builder_args['mount_holes_num'])
+    if 'usb' in layout[0]:
+        if args.usb_inner_width:
+            logging.debug('Setting USB inner width to %s', args.usb_inner_width)
+            layout[0]['usb']['inner_width'] = args.usb_inner_width
+        if args.usb_outer_width:
+            logging.debug('Setting USB outer width to %s', args.usb_outer_width)
+            layout[0]['usb']['outer_width'] = args.usb_outer_width
+        if args.usb_height:
+            logging.debug('Setting USB height to %s', args.usb_height)
+            layout[0]['usb']['height'] = args.usb_height
+        if args.usb_offset:
+            logging.debug('Setting USB offset to %s', args.usb_offset)
+            layout[0]['usb']['offset'] = args.usb_offset
+    else:
+        layout[0]['usb'] = {
+            'inner_width': args.usb_inner_width or 10,
+            'outer_width': args.usb_outer_width or 15,
+            'height': args.usb_height or 6,
+            'offset': args.usb_offset or 10
+        }
+        logging.debug('Setting up the USB parameters: %s', layout[0]['usb'])
 
-    if args.height == 0:
-        del(builder_args['height_padding'])
+    if 'layers' not in layout[0]:
+        logging.debug('Initializing layers list.')
+        layout[0]['layers'] = {}
 
-    if args.width == 0:
-        del(builder_args['width_padding'])
+    for layer in args.layer:
+        if layer not in layout[0]['layers']:
+            logging.debug('Adding layer %s', layer)
+            layout[0]['layers'][layer] = {}
 
-    if args.thickness == 0:
-        del(builder_args['thickness'])
+        if layer in args.usb_layer:
+            logging.debug('Setting include_usb_cutout=True for layer %s', layer)
+            layout[0]['layers'][layer]['include_usb_cutout'] = True
 
-    if args.corners == 0:
-        del(builder_args['corners'])
+        if layer in args.oversize:
+            logging.debug('Setting oversize %s for layer %s', args.oversize_distance, layer)
+            layout[0]['layers'][layer]['oversize'] = args.oversize_distance
 
-    if args.kerf == 0:
-        del(builder_args['kerf'])
+    # Add any designated holes
+    for hole in args.hole:
+        layer, x, y, radius = hole.split(',')  # Make sure it's in the right format
+        if layer[0] == '\\':
+            layer = layer[1:]
+        if 'holes' not in layout[0][layer]:
+            layout[0]['layers'][layer]['holes'] = []
+        logging.debug('Hole for layer %s with radius %s at %s,%s', layer, radius, x, y)
+        layout[0]['layers'][layer]['holes'].append((float(x), float(y), float(radius)))
 
-    # Add any holes
-    if holes:
-        builder_args['holes'] = holes
+    # Sanity checks
+    if 'layers' not in layout[0] or len(layout[0]['layers']) < 1:
+        # FIXME: Print help here
+        print "error: argument --layer is required"
+        exit(1)
 
     # Build the plate
     build_start = time()
-    logging.info("Processing: %s" % (export_basename))
-    case = KeyboardCase(**builder_args)
+    case = KeyboardCase(layout, args.add_format)
 
     # Create the shape based layers
     layers = (
@@ -190,23 +236,16 @@ if __name__ == '__main__':
         ('open', case.create_open_layer),
     )
     for layer, create_layer in layers:
-        if args.only and args.only != layer:
-            continue
-
         if layer in case.layers:
-            plate = create_layer(oversize=case.oversize_distance if layer in case.oversize else 0)
-            case.export(plate, layer)
+            create_layer(layer)
+            case.export(layer, args.output_dir)
 
     # Create the switch based layers
     for layer in ('switch', 'reinforcing', 'top'):
-        if args.only and args.only != layer:
-            continue
-
         if layer in case.layers:
             plate = case.create_switch_layer(layer)
-            case.export(plate, layer)
+            case.export(layer)
 
-    logging.info("Finished: %s" % (export_basename))
     logging.info("Processing took: {0:.2f} seconds".format(time()-build_start))
 
     # Display info about the plates
@@ -214,9 +253,6 @@ if __name__ == '__main__':
     print '*** PCB cutout size: %s x %s mm' % (case.inside_width, case.inside_height)
 
     for layer in case.layers:
-        if args.only and args.only != layer:
-            continue
-
         print '*** Files exported for plate', layer
         for file in case.exports[layer]:
             print '*', file['url'][1:]

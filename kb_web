@@ -22,12 +22,14 @@ import hashlib
 import json
 import logging
 import subprocess
+import sys
 import time
 from flask import Flask, jsonify, render_template, request
 
 import config
 
 # Setup the web config
+sys.path.append('src')
 from builder import KeyboardCase
 config.app['formats'].append('json')
 config.app['formats'].append('js')
