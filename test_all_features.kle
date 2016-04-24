@@ -1,0 +1,58 @@
+{
+  "name": "test_all_features",
+  "corner_type": "round",
+  "corner_radius": 4,
+  "kerf": 0.1,
+  "padding": [4,4],
+  "pcb_padding": [4,4],
+  "switch": "alps",
+  "stabilizer": "matias",
+  "foot_count": 4,
+  "case": {
+    "type": "sandwich",
+    "screw_count": 8,
+    "screw_size": 2.75
+  },
+  "layers": {
+    "simple": {},
+    "bottom": {
+      "holes": [
+        [10,10,2]
+      ],
+      "polygons": [
+        [[50,50], [50,40], [40,40], [40,50], [50,50]],
+        [[20,20], [20,30], [30,30], [30,20], [20,20]]
+      ],
+      "include_foot_holes": true,
+      "include_usb_cutout": true,
+      "thickness": 5
+    },
+    "closed": {
+      "oversize": 3,
+    },
+    "open": {
+      "oversize": 5,
+      "draw_feet": true,
+      "include_usb_cutout": true
+    },
+    "reinforcing": {
+      "include_usb_cutout": true
+    },
+    "switch": {
+      "include_usb_cutout": true
+    },
+    "top": {
+    }
+  },
+  "usb": {
+    "inner_width": 10,
+    "outer_width": 15,
+    "height": 5,
+    "offset": 25
+  }
+},
+[{"_t":"mx"},"1U MX",{"_t":"alpsmx",x:2.25},"1U Alps MX",{"_t":"mx-open",x:1.75},"1U MX open",{"_t":"mx-open-rotatable",x:1.75},"1U MX Open Rotatable",{"_t":"alps",x:2.25},"1U Alps"],
+[{"_t":"mx","_s":"cherry",w:2},"2U Cherry",{"_t":"mx","_s":"costar",x:0.75,w:2},"2U Costar",{"_t":"mx","_s":"cherry-costar",x:0.75,w:2},"2U Cherry-Costar",{"_t":"alps","_s":"alps",x:0.75,w:2},"2U Alps",{"_t":"alps","_s":"alps",x:0.75,w:2},"2.75U Alps"],
+[{"_t":"mx","_s":"cherry",w:6},"6u Cherry",{"_t":"alps","_s":"alps",x:0.75,w:6.25},"6.25u Alps"],
+[{"_t":"mx","_s":"cherry",w:6.25},"6.25u Cherry",{"_t":"alps","_s":"alps",x:0.25,w:6.5},"6.5U Alps"],
+[{"_t":"mx","_s":"cherry-costar",w:6.25},"6.25u Cherry-Costar",{"_t":"alps","_s":"costar",x:0.5,w:6.25},"6.25u Costar"]
