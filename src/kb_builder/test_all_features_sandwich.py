@@ -1,15 +1,13 @@
 """Test the basic functionality with a simple plate including every switch type.
 """
 import filecmp
-import hjson
-from builder import KeyboardCase
+from builder import KeyboardCase, load_layout_file
 
-def test_all_features():
-    layout = '{"layout": [' + open("test_all_features.kle").read() + ']}'
-    layout = hjson.loads(layout)['layout']
+
+def test_all_features_sandwich():
+    layout = load_layout_file('test_all_features_sandwich.kle')
     case = KeyboardCase(layout, ['dxf'])
 
-    print case.layers
     case.create_bottom_layer('bottom')
     case.export('bottom', 'test_exports')
 
@@ -28,7 +26,7 @@ def test_all_features():
     case.create_switch_layer('top')
     case.export('top', 'test_exports')
 
-    assert case.name == 'test_all_features'
+    assert case.name == 'test_all_features_sandwich'
     assert case.formats == ['dxf']
     assert case.kerf == 0.1
     assert case.width == 259.65

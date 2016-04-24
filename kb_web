@@ -26,13 +26,9 @@ import sys
 import time
 from flask import Flask, jsonify, render_template, request
 
-import config
-
 # Setup the web config
 sys.path.append('src')
 from builder import KeyboardCase
-config.app['formats'].append('json')
-config.app['formats'].append('js')
 
 # Setup Flask
 DEBUG = True
@@ -60,7 +56,7 @@ def root_post():
     data_hash = hashlib.sha1(json.dumps(data, sort_keys=True)).hexdigest()
 
     builder_args = {
-        'formats': config.app['formats'],
+        'formats': ['js', 'json', 'dxf'],
         'export_basename': data_hash,
         'switch_type': unicode(data.get('switch-type')),
         'stab_type': unicode(data.get('stab-type')),
@@ -113,7 +109,7 @@ def root_post():
     logging.info("Processing took: {0:.2f} seconds".format(time.time()-build_start))
 
     return jsonify({
-        'formats': config.app['formats'],
+        'formats': case.formats,
         'plates': case.layers,
         'exports': case.exports,
         'width': case.width,
@@ -130,9 +126,9 @@ if __name__ == '__main__':
     resp.remove('127.0.0.1')
     print
     for ip in resp:
-        print 'Try connecting to: http://%s:%s/' % (ip, config.app['port'])
+        print 'Try connecting to: http://%s:%s/' % (ip, 8080)
         print
     print
 
     # Start the server
-    app.run(host=config.app['host'], port=config.app['port'], debug=True)
+    app.run(host='0.0.0.0', port=8080, debug=True)

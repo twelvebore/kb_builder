@@ -27,7 +27,7 @@
 #   to determine why. If you have FreeCAD throwing obscure errors at you try
 #   changing the order of operations.
 import hashlib
-import json
+import hjson
 import logging
 import math
 import sys
@@ -68,6 +68,31 @@ STABILIZERS = {
 logging.addLevelName(CUT_SWITCH, 'cut_switch')
 logging.addLevelName(CENTER_MOVE, 'center_move')
 
+
+def load_layout(layout_text):
+    """Loads a KLE layout file and returns a list of rows.
+    """
+    layout = []
+    keyboard_properties = {}
+
+    # Wrap in a dictionary so HJSON will accept keyboard-layout-editor raw data
+    for row in hjson.loads('{"layout": [' + layout_text + ']}')['layout']:
+        if isinstance(row, dict):
+            keyboard_properties.update(row)
+        else:
+            layout.append(row)
+
+    layout.insert(0, keyboard_properties)
+
+    return layout
+
+
+def load_layout_file(file):
+    """Loads a KLE layout file and returns a list of rows.
+    """
+    return load_layout(open(file).read())
+
+
 class KeyboardCase(object):
     def __init__(self, keyboard_layout, formats=None):
         # User settable things
@@ -76,8 +101,7 @@ class KeyboardCase(object):
         self.corner_type = None
         self.corners = 0
         self.formats = formats if formats else ['dxf']
-        self.foot_holes = []
-        self.foot_count = 0
+        self.feet = []
         self.foot_hole_diameter = 3
         self.foot_hole_square = 9
         self.kerf = 0
@@ -163,7 +187,7 @@ class KeyboardCase(object):
         plate = plate.center(left_edge, top_edge)
         distance_moved = 0
 
-        for i in range(self.foot_count):
+        for i in range(len(self.feet)):
             plate = plate.polyline(FOOT_POINTS).center(15, 0)  # Add a foot
             distance_moved += 15
 
@@ -233,7 +257,7 @@ class KeyboardCase(object):
         """Cut the mounting points for the feet.
         """
         log.debug("cut_feet_holes()")
-        for foot_hole in self.foot_holes:
+        for foot_hole in self.feet:
             points = [
                 ((self.foot_hole_square-self.kerf)/2, (self.foot_hole_square-self.kerf)/2),
                 ((self.foot_hole_square-self.kerf)/2, -(self.foot_hole_square-self.kerf)/2),
@@ -252,9 +276,6 @@ class KeyboardCase(object):
         log.debug("cut_usb_hole(layer='%s')" % (layer))
         """Cut the opening that allows for the USB hole.
         """
-        if 'include_usb_cutout' not in self.layers[layer] or not self.layers[layer]['include_usb_cutout']:
-            return self.plate
-
         points = [
             (-(self.usb['outer_width']-self.kerf)/2+self.usb['offset'], -(self.y_pad+self.y_pcb_pad+self.kerf*2)/2-self.layers[layer].get('oversize', 0)/2),
             ((self.usb['outer_width']-self.kerf)/2+self.usb['offset'], -(self.y_pad+self.y_pcb_pad+self.kerf*2)/2-self.layers[layer].get('oversize', 0)/2),
@@ -351,6 +372,9 @@ class KeyboardCase(object):
                 if 'corner_radius' in row:
                     self.corners = float(row['corner_radius'])
 
+                if 'feet' in row:
+                    self.feet = row['feet']
+
                 if 'kerf' in row:
                     self.kerf = float(row['kerf'])
 
@@ -430,7 +454,7 @@ class KeyboardCase(object):
 
         # Set some values based on the layout we parsed above
         if not self.name:
-            export_basename = json.dumps(self.layout, sort_keys=True)
+            export_basename = hjson.dumps(self.layout, sort_keys=True)
             self.name = hashlib.sha1(export_basename).hexdigest()
 
         self.width = layout_width*KEY_UNIT + 2*(self.x_pad+self.x_pcb_pad)
@@ -1128,7 +1152,7 @@ class KeyboardCase(object):
         settings['plate_corners'] = self.corners
         settings['kerf'] = self.kerf
 
-        return json.dumps(settings, sort_keys=True, indent=4, separators=(',', ': '))
+        return hjson.dumps(settings, sort_keys=True, indent=4, separators=(',', ': '))
 
     def export(self, layer, directory='static/exports'):
         """Export the specified layer to the formats specified in self.formats.

@@ -105,25 +105,39 @@ Available switches:
 * mx-open
 * mx-open-rotatable
 
-### foot_count
+### feet
 
-How many feet to include for this case.
+Specify the list of case feet. This should be x,y coordinates as measured from the top left corner.
+
+Example:
+
+```
+    "feet": [
+        [50,25],
+        [80,25],
+        [110,25],
+        [140,25],
+    ]
+```
+    
+This will create 4 feet in the open and closed layers, and place the screw hole in the open layer
+at each x,y coordinate specified.
 
 ### case
 
 Specify the properties of the case. There are several keys that can be specified in this dictionary.
 
-#### type
+#### case -> type
 
 * `none`: Cut each layer with no screw holes
 * `poker`: Cut each layer with screw holes to fit a poker-style 60% case
 * `sandwich`: Cut each layer with screw holes designed for a sandwich style case
 
-#### screw_count
+#### case -> screw_count
 
 How many screws to include in this case. Only valid for `sandwich` cases. Must be >= 4.
 
-#### screw_size
+#### case -> screw_size
 
 The radius for the screw holes.
 
@@ -141,7 +155,7 @@ Available layers:
 * `switch`: The plate that switches snap into.
 * `top`: A plate to sit on top of the switch plate for people who do not want the floating keys look.
 
-#### holes
+#### layer -> holes
 
 The holes list allows you to specify holes to be cut in this layer. If you place a hole inside an existing cutout the hole will not appear on the final drawing.
 
@@ -149,7 +163,7 @@ This should be a list of lists, with each internal list consisting of [x,y,radiu
 
 You may specify this for any layer.
 
-#### polygons
+#### layer -> polygons
 
 The polygons list allows you to specify polygons to be cut in this layer. If you place a polygon inside an existing cutout it will not appear on the final drawing.
 
@@ -157,29 +171,29 @@ This should be a list of list of lists. The innermost list is an individual poly
 
 You may specify this for any layer.
 
-#### oversize
+#### layer -> oversize
 
 If this is set to a non-zero value this layer will be made that many MM bigger, while keeping the screw holes in the same location relative to the center of the plate.
 
 You may specify this for any layer.
 
-#### draw_feet
+#### layer -> draw_feet
 
 When set to True, feet will be included in the layer. The feet are drawn assuming they will be 9mm thick, and accept an M3 screw. If your keyboard is less than 5 rows tall you may run into problems.
 
 You may specify this on the `closed` and `open` layers.
 
-#### include_foot_holes
+#### layer -> include_foot_holes
 
 When set to True holes will be cut to accept feet drawn by draw_feet. The holes are cut assuming the feet will be 9mm thick.
 
 You may specify this on the `bottom` layer.
 
-#### include_usb_cutout
+#### layer -> include_usb_cutout
 
 If set to true the USB cutout will be included on this layer.
 
-#### thickness
+#### layer -> thickness
 
 How thick this plate should be.
 
@@ -276,8 +290,9 @@ $ sudo apt-get install software-properties-common
 $ sudo add-apt-repository ppa:freecad-maintainers/freecad-daily
 $ sudo apt-get update
 $ sudo apt-get upgrade
-$ sudo apt-get -y install unzip build-essential freecad git python-pip python-dev python-flask python-nose2
+$ sudo apt-get -y install unzip build-essential freecad git python-pip python-dev python-flask
 $ sudo pip install cadquery hjson
+$ sudo pip install nose2 cov-core  # Optional, used for unit testing
 ```
 
 ### Install the Draft-dxf-importer
@@ -302,6 +317,18 @@ $ cp Draft-dxf-importer-1.38/* /root/.FreeCAD/
 ```
 $ git clone https://github.com/swill/kb_builder.git ~/kb_builder
 ```
+
+## Testing the tool (optional)
+
+If you want to run the included unit/integration tests you can use nose2.
+
+```
+$ cd ~/kb_builder
+$ nose2
+```
+
+There will be a lot of output, and at the end it will print OK. If it
+instead prints out FAILED you may have a problem with your environment.
 
 ## Running the tool
 

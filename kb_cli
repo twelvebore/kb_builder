@@ -8,6 +8,8 @@ import argparse
 import hjson
 import logging
 import sys
+
+from src.kb_builder.builder import load_layout
 sys.path.append('src')
 from time import time
 from kb_builder.builder import KeyboardCase
@@ -100,9 +102,7 @@ if __name__ == '__main__':
             print '*** Paste the KLE data here and press Ctrl-D to process it:'
         layout = sys.stdin.read()
 
-    layout = '{"layout": [' + layout + ']}'
-    #print layout
-    layout = hjson.loads(layout)['layout']
+    layout = load_layout(layout)
 
     if not isinstance(layout[0], dict):
         logging.debug("Keyboard property dictionary not found. Adding one.")
