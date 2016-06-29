@@ -389,10 +389,10 @@ class KeyboardCase(object):
                 if 'usb' in row:
                     self.usb = row['usb']
                     self.usb = {
-                        'inner_width': float(row['usb']['inner_width']),
-                        'outer_width': float(row['usb']['outer_width']),
-                        'height': float(row['usb']['height']),
-                        'offset': float(row['usb']['offset'])
+                        'inner_width': float(row['usb']['inner_width'] if 'inner_width' in row['usb'] else 10),
+                        'outer_width': float(row['usb']['outer_width'] if 'outer_width' in row['usb'] else 15),
+                        'height': float(row['usb']['height'] if 'height' in row['usb'] else 5),
+                        'offset': float(row['usb']['offset'] if 'offset' in row['usb'] else 0)
                     }
 
                 if 'stabilizer' in row:
