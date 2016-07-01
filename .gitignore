@@ -12,3 +12,4 @@ test_exports/*.dxf
 .coverage
 htmlcov
 xmlcov
+coverage.xml
