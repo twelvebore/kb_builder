@@ -9,10 +9,9 @@ import hjson
 import logging
 import sys
 
-from src.kb_builder.builder import load_layout
 sys.path.append('src')
 from time import time
-from kb_builder.builder import KeyboardCase
+from kb_builder.builder import KeyboardCase, load_layout
 
 
 # Parse our command line args
