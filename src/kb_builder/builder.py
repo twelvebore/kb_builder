@@ -185,6 +185,7 @@ class KeyboardCase(object):
 
         plate = plate.polyline(outline_points)  # Cut the internal outline
         plate = plate.center(left_edge, top_edge)
+        plate = plate.workplane()  # I don't know why this is needed
         distance_moved = 0
 
         for i in range(len(self.feet)):
