@@ -71,6 +71,13 @@ logging.addLevelName(CUT_SWITCH, 'cut_switch')
 logging.addLevelName(CENTER_MOVE, 'center_move')
 
 
+def get_angle(p1, p2):
+    # Return the angle between two points
+    xDiff = p2[0] - p1[0]
+    yDiff = p2[1] - p1[1]
+    return math.degrees(math.atan2(yDiff, xDiff)) - 90
+
+
 def load_layout(layout_text):
     """Loads a KLE layout file and returns a list of rows.
     """
@@ -282,15 +289,30 @@ class KeyboardCase(object):
         log.debug("cut_usb_hole(layer='%s')" % (layer))
         """Cut the opening that allows for the USB hole.
         """
+        extra_distance = 0
+        oversize = self.layers[layer].get('oversize', 0)
+        outside_line = -(self.height + self.kerf*2 + oversize) / 2
+        normal_outside_line = -(self.height + self.kerf*2) / 2
+        inside_line = -(self.inside_height - self.kerf*2) / 2
+
+        if outside_line != normal_outside_line:
+            # Calculate how wide the top line should be to keep the cutout
+            # angle the same on oversized plates as normal plates
+            lower_point = ((self.usb['inner_width']-self.kerf)/2, inside_line)
+            upper_point = ((self.usb['outer_width']+self.kerf)/2, outside_line)
+            extra_distance = math.tan(get_angle(upper_point, lower_point)) * (oversize/2)
+
         points = [
-            (-(self.usb['outer_width']-self.kerf)/2+self.usb['offset'], -(self.y_pad+self.y_pcb_pad+self.kerf*2)/2-self.layers[layer].get('oversize', 0)/2),
-            ((self.usb['outer_width']-self.kerf)/2+self.usb['offset'], -(self.y_pad+self.y_pcb_pad+self.kerf*2)/2-self.layers[layer].get('oversize', 0)/2),
-            ((self.usb['inner_width']-self.kerf)/2+self.usb['offset'], (self.y_pad-self.y_pcb_pad)/2),
-            (-(self.usb['inner_width']-self.kerf)/2+self.usb['offset'], (self.y_pad-self.y_pcb_pad)/2),
-            (-(self.usb['outer_width']-self.kerf)/2+self.usb['offset'], -(self.y_pad+self.y_pcb_pad+self.kerf*2)/2-self.layers[layer].get('oversize', 0)/2)
+            (-(self.usb['outer_width']+self.kerf)/2+self.usb['offset']+extra_distance, outside_line),
+            ((self.usb['outer_width']+self.kerf)/2+self.usb['offset']-extra_distance, outside_line),
+            ((self.usb['inner_width']-self.kerf)/2+self.usb['offset'], inside_line),
+            (-(self.usb['inner_width']-self.kerf)/2+self.usb['offset'], inside_line),
+            (-(self.usb['outer_width']+self.kerf)/2+self.usb['offset']+extra_distance, outside_line)
         ]
-        y_distance = -self.height / 2 + (self.y_pad + self.y_pcb_pad) / 2 - self.kerf*2
-        self.plate = self.plate.center(0, y_distance).polyline(points)
+        print points
+        #y_distance = -self.height / 2 + (self.y_pad + self.y_pcb_pad) / 2 - self.kerf*2
+        self.plate = self.plate.polyline(points)
+        self.plate = self.plate.polyline([[0,0], [1,0], [1,1], [0,0]])
 
         if layer == 'bottom':
             points = [
@@ -302,9 +324,10 @@ class KeyboardCase(object):
             ]
             self.plate = self.plate.polyline(points)
 
-        self.plate = self.plate.center(0, -y_distance)
+        #self.plate = self.plate.center(0, -y_distance)
 
-        return self.plate.cutThruAll()
+        self.plate = self.plate.cutThruAll()
+        return self.plate
 
     def cut_plate_polygons(self, layer):
         """Cut any polygons specified for this layer.
