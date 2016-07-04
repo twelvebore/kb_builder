@@ -156,6 +156,8 @@ class KeyboardCase(object):
         We stash nifty things like the feet in the closed layer.
         """
         log.debug("create_closed_layer(layer='%s')" % layer)
+        inside_width = self.inside_width-self.kerf*2
+        inside_height = self.inside_height-self.kerf*2
         FOOT_POINTS = [
             # Feet that are drawn in the closed/open layers. Sized for 10mm long M4 flat-head machine screw.
             (3-self.kerf,0-self.kerf),                                     # Upper left corner
@@ -175,29 +177,29 @@ class KeyboardCase(object):
             (5+self.kerf,4.5+self.kerf), (3-self.kerf,4.5+self.kerf),      # End of the screw cutout
             (3-self.kerf,0-self.kerf)                                      # Upper left corner
         ]
-        plate = self.init_plate(layer)
+        self.init_plate(layer)
         outline_points = [
-            (self.inside_width/2, self.inside_height/2),
-            (-self.inside_width/2, self.inside_height/2),
-            (-self.inside_width/2, -self.inside_height/2),
-            (self.inside_width/2, -self.inside_height/2),
-            (self.inside_width/2, self.inside_height/2)
+            (inside_width/2, inside_height/2),
+            (-inside_width/2, inside_height/2),
+            (-inside_width/2, -inside_height/2),
+            (inside_width/2, -inside_height/2),
+            (inside_width/2, inside_height/2)
         ]
         left_edge = -((self.inside_width+self.kerf*2)/2)+5
         top_edge = -((self.inside_height+self.kerf*2)/2)+5
 
-        plate = plate.polyline(outline_points)  # Cut the internal outline
-        plate = plate.center(left_edge, top_edge)
-        plate = plate.workplane()  # I don't know why this is needed
-        distance_moved = 0
+        self.plate = self.plate.polyline(outline_points)  # Cut the internal outline
+        self.plate = self.plate.center(left_edge, top_edge)
+        #plate = plate.workplane()  # I don't know why this is needed
 
+        distance_moved = 0
         for i in range(len(self.feet)):
-            plate = plate.polyline(FOOT_POINTS).center(15, 0)  # Add a foot
+            self.plate = self.plate.polyline(FOOT_POINTS).center(15, 0)  # Add a foot
             distance_moved += 15
 
-        plate = plate.center(-left_edge-distance_moved,-top_edge)  # Return to center and cut
-
-        return plate.cutThruAll()
+        self.plate = self.plate.center(-left_edge-distance_moved,-top_edge)  # Return to center
+        self.plate = self.plate.cutThruAll()
+        return self.plate
 
     def create_open_layer(self, layer='open'):
         """Returns a copy of the open layer ready to export.
@@ -567,7 +569,8 @@ class KeyboardCase(object):
             self.cut_usb_hole(layer)
 
         self.origin = (0,0)
-        return self.plate.cutThruAll()
+        self.plate = self.plate.cutThruAll()
+        return self.plate
 
     def layout_sandwich_holes(self):
         """Determine where screw holes should be placed.
