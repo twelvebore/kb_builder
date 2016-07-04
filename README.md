@@ -160,6 +160,14 @@ Available layers:
 * `switch`: The plate that switches snap into.
 * `top`: A plate to sit on top of the switch plate for people who do not want the floating keys look.
 
+#### layer -> inset
+
+When set to true, the outline for this layer will be identical to the interior cutout on a "closed" layer. This will allow the plate to be inset within an open or closed layer.
+
+No screw holes will be drawn.
+
+If both `inset` and `oversize` are set, and `oversize` is a positive value, the plate will not fit within the open/closed layer.
+
 #### layer -> holes
 
 The holes list allows you to specify holes to be cut in this layer. If you place a hole inside an existing cutout the hole will not appear on the final drawing.
@@ -245,6 +253,7 @@ This dictionary sets every available option.
     'corner_type': 'round',
     'corner_radius': 4,
     'kerf': 0.1,
+    'key_spacing': 19,
     'screw_hole_size': 2,
     'screw_hole_number': 8,
     'layers': {
@@ -270,6 +279,7 @@ This dictionary sets every available option.
             'oversize': 3,
         },
         'reinforcing': {
+            'inset': True,
             'holes': [[5,5,2]],
             'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
         },

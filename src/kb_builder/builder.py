@@ -32,6 +32,9 @@ import logging
 import math
 import sys
 
+from os import makedirs
+from os.path import exists
+
 log = logging.getLogger()
 
 # Setup the import environment for FreeCAD
@@ -470,19 +473,23 @@ class KeyboardCase(object):
 
     def init_plate(self, layer):
         """Return a basic plate with the features that are common to all layers.
-
-        If oversize is greater than 0 the layer will be made that many mm larger than default, while keeping screws in the same position.
         """
         log.debug("init_plate(layer='%s')" % layer)
-        self.plate = cadquery.Workplane("front").box(self.width+self.kerf*2+self.layers[layer].get('oversize', 0), self.height+self.kerf*2+self.layers[layer].get('oversize', 0), self.layers[layer].get('thickness', 1.5))
+
+        inset = self.layers[layer].get('inset', False)
+        oversize = self.layers[layer].get('oversize', 0)
+        width = self.inside_width-self.kerf*2+oversize if inset else self.width+self.kerf*2+oversize
+        height = self.inside_height-self.kerf*2+oversize if inset else self.height+self.kerf*2+oversize
+
+        self.plate = cadquery.Workplane("front").box(width, height, self.layers[layer].get('thickness', 1.5))
 
         # Cut the corners if necessary
-        if self.corners > 0 and self.corner_type == 'round':
+        if not inset and self.corners > 0 and self.corner_type == 'round':
             self.plate = self.plate.edges("|Z").fillet(self.corners)
 
         self.plate = self.plate.faces("<Z").workplane()
 
-        if self.corners > 0:
+        if not inset and self.corners > 0:
             if self.corner_type == 'bevel':
                 # Lower right corner
                 points = (
@@ -512,7 +519,9 @@ class KeyboardCase(object):
                 log.error('Unknown corner type %s!', self.corner_type)
 
         # Cut the mount holes in the plate
-        if self.case['type'] == 'poker':
+        if inset or not self.case['type'] or self.case['type'] == 'reinforcing':
+            pass
+        elif self.case['type'] == 'poker':
             hole_points = [(-139,9.2), (-117.3,-19.4), (-14.3,0), (48,37.9), (117.55,-19.4), (139,9.2)] # holes
             rect_center = (self.width/2) - (3.5/2)
             rect_points = [(rect_center,9.2), (-rect_center,9.2)] # edge slots
@@ -540,10 +549,8 @@ class KeyboardCase(object):
                     self.plate = self.plate.center(0,-y_gap).circle(radius)
                 self.plate = self.plate.center(-hole_distance, -hole_distance)
             else:
-                log.error('Not adding holes. Why?!?!')
+                log.error('Not adding holes. Why?!')
             self.plate = self.center(self.width/2 - self.kerf, self.height/2 - self.kerf) # move to center of the plate
-        elif not self.case['type'] or self.case['type'] == 'reinforcing':
-            pass
         else:
             log.error('Unknown case type: %s', self.case['type'])
 
@@ -640,6 +647,7 @@ class KeyboardCase(object):
         # Standard locations with no offset
         mx_height = 7 - kerf
         mx_width = 7 - kerf
+        mx_wing_width = 7.8 - kerf
         alps_height = 6.4 - kerf
         alps_width = 7.8 - kerf
         wing_inside = 2.9 + kerf
@@ -682,6 +690,7 @@ class KeyboardCase(object):
             offset = 1
             mx_height += offset
             mx_width += offset
+            mx_wing_width = mx_width
             alps_height += offset
             alps_width += offset
             wing_inside += offset
@@ -745,29 +754,37 @@ class KeyboardCase(object):
                 (mx_width,-mx_height)
             ]
         elif switch_type == 'mx-open':
-            points = [
-                (mx_width,-mx_height),
-                (mx_width,-wing_outside),
-                (alps_width,-wing_outside),
-                (alps_width,-wing_inside),
-                (mx_width,-wing_inside),
-                (mx_width,wing_inside),
-                (alps_width,wing_inside),
-                (alps_width,wing_outside),
-                (mx_width,wing_outside),
-                (mx_width,mx_height),
-                (-mx_width,mx_height),
-                (-mx_width,wing_outside),
-                (-alps_width,wing_outside),
-                (-alps_width,wing_inside),
-                (-mx_width,wing_inside),
-                (-mx_width,-wing_inside),
-                (-alps_width,-wing_inside),
-                (-alps_width,-wing_outside),
-                (-mx_width,-wing_outside),
+            points = [(mx_width,-mx_height)]
+            if mx_width != mx_wing_width:
+                points.extend([
+                    (mx_width,-wing_outside),
+                    (mx_wing_width,-wing_outside),
+                    (mx_wing_width,-wing_inside),
+                    (mx_width,-wing_inside),
+                    (mx_width,wing_inside),
+                    (mx_wing_width,wing_inside),
+                    (mx_wing_width,wing_outside),
+                    (mx_width,wing_outside)
+                ])
+            points.extend([
+                (mx_width, mx_height),
+                (-mx_width,mx_height)
+            ])
+            if mx_width != mx_wing_width:
+                points.extend([
+                    (-mx_width,wing_outside),
+                    (-mx_wing_width,wing_outside),
+                    (-mx_wing_width,wing_inside),
+                    (-mx_width,wing_inside),
+                    (-mx_width,-wing_inside),
+                    (-mx_wing_width,-wing_inside),
+                    (-mx_wing_width,-wing_outside),
+                    (-mx_width,-wing_outside)
+                ])
+            points.extend([
                 (-mx_width,-mx_height),
                 (mx_width,-mx_height)
-            ]
+            ])
         elif switch_type == 'mx-open-rotatable':
             points = [
                 (mx_width,-mx_height),
@@ -1164,14 +1181,21 @@ class KeyboardCase(object):
         """
         log.debug("export(layer='%s', directory='%s')", layer, directory)
         log.info("Exporting %s layer for %s", layer, self.name)
+        self.exports[layer] = []
+        dirname = '%s/%s' % (directory, self.name)
+        basename = '%s/%s_layer' % (dirname, layer)
+
+        if not exists(dirname):
+            makedirs(dirname)
+
         # Cut anything drawn on the plate
         self.plate = self.plate.cutThruAll()
+
         # draw the part so we can export it
         Part.show(self.plate.val().wrapped)
         doc = FreeCAD.ActiveDocument
+
         # export the drawing into different formats
-        self.exports[layer] = []
-        basename = '%s/%s_%s' % (directory, layer, self.name)
         if 'js' in self.formats:
             with open(basename+".js", "w") as f:
                 cadquery.exporters.exportShape(self.plate, 'TJS', f)
