@@ -48,6 +48,7 @@ parser.add_argument('--add-format', default=['dxf'], action='append', help='Add 
 parser.add_argument('--output-dir', type=str, default='static/exports', help='What directory to output files to (Default: static/exports)')
 parser.add_argument('--oversize', default=[], action='append', help='Make a layer larger than the other layers')
 parser.add_argument('--oversize-distance', type=int, default=4, help='How much larger an oversized layer is')
+parser.add_argument('--only', type=str, help='Only generate a single layer. Useful for testing.')
 args = parser.parse_args()
 
 # Setup logging
@@ -221,6 +222,12 @@ if __name__ == '__main__':
         # FIXME: Print help here
         print "error: argument --layer is required"
         exit(1)
+
+    # Remove layers not in args.only, if specified
+    if args.only:
+        for layer in layout[0]['layers']:
+            if layer != args.only:
+                del(layout[0]['layers'][layer])
 
     # Build the plate
     build_start = time()
