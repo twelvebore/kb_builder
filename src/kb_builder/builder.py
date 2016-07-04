@@ -309,8 +309,6 @@ class KeyboardCase(object):
             (-(self.usb['inner_width']-self.kerf)/2+self.usb['offset'], inside_line),
             (-(self.usb['outer_width']+self.kerf)/2+self.usb['offset']+extra_distance, outside_line)
         ]
-        print points
-        #y_distance = -self.height / 2 + (self.y_pad + self.y_pcb_pad) / 2 - self.kerf*2
         self.plate = self.plate.polyline(points)
         self.plate = self.plate.polyline([[0,0], [1,0], [1,1], [0,0]])
 
@@ -323,8 +321,6 @@ class KeyboardCase(object):
                 ((self.usb['inner_width']-self.kerf)/2+self.usb['offset'], (self.y_pad-self.y_pcb_pad)/2)
             ]
             self.plate = self.plate.polyline(points)
-
-        #self.plate = self.plate.center(0, -y_distance)
 
         self.plate = self.plate.cutThruAll()
         return self.plate
