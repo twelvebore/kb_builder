@@ -26,11 +26,12 @@ Default Properties:
 
 ```
 {
-    'name': <sha_hash_of_layout>,
-    'case_type': 'none',
-    'switch': 'mx',
-    'stabilizer': 'cherry',
-    'layers': {
+    "name": <sha_hash_of_layout>,
+    "case_type": "none",
+    "key_spacing": 19.05,
+    "switch": "mx",
+    "stabilizer": "cherry",
+    "layers": {
         'switch': {}
     }
 }
@@ -56,6 +57,10 @@ The radius for rounded or beveled corners.
 ### kerf
 
 Adjust the drawing to account for the width of the cutting instrument. If this is set to a non-zero value the drawing will be generated so that a cutting implement this many MM wide can trace the center of the lines and the plate will come out to exactly the right dimensions.
+
+### key_spacing
+
+How much space (in MM) between switch centers.
 
 ### screw_hole_size
 

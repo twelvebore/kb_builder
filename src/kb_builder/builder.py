@@ -48,7 +48,6 @@ CUT_SWITCH = 9
 CENTER_MOVE = 8
 
 # Constants
-KEY_UNIT = 19.05  # How many MM wide a 1u key is
 STABILIZERS = {
     # size: (width_between_center, switch_offset)
     2: (11.95, 0),
@@ -109,6 +108,7 @@ class KeyboardCase(object):
         self.holes = []
         self.stab_type = 'cherry'
         self.switch_type = 'mx'
+        self.key_spacing = 19.05
         self.usb = {
             'inner_width': 10,
             'outer_width': 10,
@@ -220,31 +220,31 @@ class KeyboardCase(object):
             for k, key in enumerate(row):
                 x, y, kx = 0, 0, 0
                 if 'x' in key:
-                    x = key['x']*KEY_UNIT
+                    x = key['x'] * self.key_spacing
                     kx = x
 
                 if 'y' in key and k == 0:
-                    y = key['y']*KEY_UNIT
+                    y = key['y'] * self.key_spacing
 
                 if r == 0 and k == 0: # handle placement of the first key in first row
-                    self.center((key['w'] * KEY_UNIT / 2), (KEY_UNIT / 2))
+                    self.center((key['w'] * self.key_spacing / 2), (self.key_spacing / 2))
                     x += (self.x_pad+self.x_pcb_pad)
                     y += (self.y_pad+self.y_pcb_pad)
                     # set x_off negative since the 'cut_switch' will append 'x' and we need to account for initial spacing
-                    self.x_off = -(x - (KEY_UNIT/2 + key['w']*KEY_UNIT/2) - kx)
+                    self.x_off = -(x - (self.key_spacing/2 + key['w']*self.key_spacing/2) - kx)
                 elif k == 0: # handle changing rows
-                    self.center(-self.x_off, KEY_UNIT) # move to the next row
+                    self.center(-self.x_off, self.key_spacing) # move to the next row
                     self.x_off = 0 # reset back to the left side of the plate
-                    x += KEY_UNIT/2 + key['w']*KEY_UNIT/2
+                    x += self.key_spacing/2 + key['w']*self.key_spacing/2
                 else: # handle all other keys
-                    x += prev_width*KEY_UNIT/2 + key['w']*KEY_UNIT/2
+                    x += prev_width*self.key_spacing/2 + key['w']*self.key_spacing/2
 
                 if prev_y_off != 0: # prev_y_off != 0
                     y += -prev_y_off
                     prev_y_off = 0
 
                 if 'h' in key and key['h'] > 1: # deal with vertical keys
-                    prev_y_off = key['h']*KEY_UNIT/2 - KEY_UNIT/2
+                    prev_y_off = key['h']*self.key_spacing/2 - self.key_spacing/2
                     y += prev_y_off
 
                 # Cut the switch hole
@@ -379,6 +379,9 @@ class KeyboardCase(object):
                 if 'kerf' in row:
                     self.kerf = float(row['kerf'])
 
+                if 'key_spacing' in row:
+                    self.key_spacing = float(row['key_spacing'])
+
                 if 'padding' in row:
                     self.x_pad = float(row['padding'][0])
                     self.y_pad = float(row['padding'][1])
@@ -449,7 +452,7 @@ class KeyboardCase(object):
                 self.layout.append(row_layout)
                 if row_width > layout_width:
                     layout_width = row_width
-                layout_height += KEY_UNIT + row_height*KEY_UNIT;
+                layout_height += self.key_spacing + row_height*self.key_spacing
             else:
                 log.warn('Unknown row type: %s', type(row))
 
@@ -458,7 +461,7 @@ class KeyboardCase(object):
             export_basename = hjson.dumps(self.layout, sort_keys=True)
             self.name = hashlib.sha1(export_basename).hexdigest()
 
-        self.width = layout_width*KEY_UNIT + 2*(self.x_pad+self.x_pcb_pad)
+        self.width = layout_width*self.key_spacing + 2*(self.x_pad+self.x_pcb_pad)
         self.height = layout_height + 2*(self.y_pad+self.y_pcb_pad)
         self.inside_height = self.height-self.y_pad*2-self.kerf*2
         self.inside_width = self.width-self.x_pad*2-self.kerf*2
@@ -667,13 +670,14 @@ class KeyboardCase(object):
 
         if layer == 'top':
             # Cut out openings the size of keycaps
+            key_spacing = self.layers[layer].get('key_spacing', self.key_spacing)
             switch_type = 'mx'
             stab_type = 'cherry'
             if height > 1:
-                mx_width = (((KEY_UNIT/2) * height) + 0.5) - kerf
+                mx_width = (((key_spacing/2) * height) + 0.5) - kerf
             else:
-                mx_width = (((KEY_UNIT/2) * width) + 0.5) - kerf
-            mx_height = ((KEY_UNIT/2) + 0.5) - kerf
+                mx_width = (((key_spacing/2) * width) + 0.5) - kerf
+            mx_height = ((key_spacing/2) + 0.5) - kerf
         elif layer == 'reinforcing':
             offset = 1
             mx_height += offset
