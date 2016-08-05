@@ -5,7 +5,6 @@ By default this reads the data on stdin. You can also use --file to pass data
 in through a file.
 """
 import argparse
-import hjson
 import logging
 import sys
 
@@ -238,8 +237,7 @@ if __name__ == '__main__':
         # (layer_name, create_function)
         ('simple', case.init_plate),
         ('bottom', case.create_bottom_layer),
-        ('closed', case.create_closed_layer),
-        ('open', case.create_open_layer),
+        ('middle', case.create_middle_layer)
     )
     for layer, create_layer in layers:
         if layer in case.layers:
@@ -247,7 +245,7 @@ if __name__ == '__main__':
             case.export(layer, args.output_dir)
 
     # Create the switch based layers
-    for layer in ('switch', 'reinforcing', 'top'):
+    for layer in ('top', 'switch', 'reinforcing'):
         if layer in case.layers:
             plate = case.create_switch_layer(layer)
             case.export(layer)

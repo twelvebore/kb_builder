@@ -28,7 +28,7 @@ from flask import Flask, jsonify, render_template, request
 
 # Setup the web config
 sys.path.append('src')
-from builder import KeyboardCase
+from kb_builder.builder import KeyboardCase
 
 # Setup Flask
 DEBUG = True
@@ -79,7 +79,6 @@ def root_post():
         'keyboard_layout': data.get('layout', ''),
         'oversize': [], # FIXME: Add ability to specify this
         'oversize_distance': 2, # FIXME: Add ability to specify this
-        'foot_count': 2, # FIXME: Add ability to specify this
     }
 
     build_start = time.time()
@@ -91,12 +90,11 @@ def root_post():
         # (layer_name, create_function)
         ('simple', case.init_plate),
         ('bottom', case.create_bottom_layer),
-        ('closed', case.create_closed_layer),
-        ('open', case.create_open_layer),
+        ('middle', case.create_middle_layer)
     )
     for layer, create_layer in layers:
         if layer in case.layers:
-            plate = create_layer(oversize=case.oversize_distance if layer in case.oversize else 0)
+            plate = create_layer(layer)
             case.export(plate, layer)
 
     # Create the switch based layers

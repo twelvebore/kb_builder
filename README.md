@@ -39,7 +39,13 @@ Default Properties:
 
 ### name
 
-Setting this value sets the name your plate files will be exported to. The filename will be `{layer}_{name}.{format}`.
+Setting this value sets the name your plate files will be exported to. The filename will be `{name}/{layer}_layer.{format}`.
+
+### case_type
+
+* `none`: Cut each layer with no screw holes
+* `poker`: Cut each layer with screw holes to fit a poker-style 60% case
+* `sandwich`: Cut each layer with screw holes designed for a sandwich style case
 
 ### corner_type
 
@@ -54,6 +60,27 @@ Available corner_types:
 
 The radius for rounded or beveled corners.
 
+### feet
+
+Specify the case foot properties. This should be a dictionary with "width" at minimum. The following values are available:
+
+* `width`: How wide the feet will be. They will end up ~10-18mm wider to account for the hex ends. Required.
+* `screw_offset`: How far out from center to place the screw holes on the feet. Defaults to width-3.
+* `draw_offset`: Offset from center where the feet are drawn. Defaults to [0,0]
+* `top_foot`: The x,y offset from center for the top foot. Defaults to [0,-25]
+* `bottom_foot`: The x,y offset from center for the bottom foot. Defaults to [0,25]
+
+Example:
+
+```
+    "feet": {
+        "width": 240,
+        "draw_offset": [30,0],
+        "top_foot": [0,-25],
+        "bottom_foot": [0,25]
+    }
+```
+
 ### kerf
 
 Adjust the drawing to account for the width of the cutting instrument. If this is set to a non-zero value the drawing will be generated so that a cutting implement this many MM wide can trace the center of the lines and the plate will come out to exactly the right dimensions.
@@ -62,29 +89,33 @@ Adjust the drawing to account for the width of the cutting instrument. If this i
 
 How much space (in MM) between switch centers.
 
-### screw_hole_size
-
-The radius in MM for the screw holes.
-
-Default: 2
-
-### screw_hole_number
-
-The number of screw holes to put into the case. Must be set to an integer >= 4.
-
-Default: 4
-
 ### padding
 
 This sets the padding for both width and height. This is how wide the "open" ond "closed" layers will end up. It should be a two item list consisting of: `[width,height]`
 
-Exmaple: 'padding': [4,4]
+Exmaple: "padding": [4,4]
 
 ### pcb_padding
 
 This is to accommodate the PCB for both width and height. It should be a two item list consisting of: `[width,height]`
 
-Example: 'pcb_padding': [4,4]
+Example: "pcb_padding": [4,4]
+
+### screw
+
+Specify the properties for the screw holes. Only used by sandwich cases. The following values are available:
+
+* `count`: The number of screw holes to put into the case. Must be set to an even integer >= 4. Default: 4
+* `offset`: The distance from the edge of the plate to place the screw holes. Default: 4 * radius (Warning: Not yet implemented)
+* `radius`: The radius in MM for the screw holes. Default: 2
+
+Example:
+```
+    "screw": {
+        "count": 6,
+        "radius": 5
+    }
+```
 
 ### stabilizer
 
@@ -109,42 +140,6 @@ Available switches:
 * mx
 * mx-open
 * mx-open-rotatable
-
-### feet
-
-Specify the list of case feet. This should be x,y coordinates as measured from the top left corner.
-
-Example:
-
-```
-    "feet": [
-        [50,25],
-        [80,25],
-        [110,25],
-        [140,25],
-    ]
-```
-    
-This will create 4 feet in the open and closed layers, and place the screw hole in the open layer
-at each x,y coordinate specified.
-
-### case
-
-Specify the properties of the case. There are several keys that can be specified in this dictionary.
-
-#### case -> type
-
-* `none`: Cut each layer with no screw holes
-* `poker`: Cut each layer with screw holes to fit a poker-style 60% case
-* `sandwich`: Cut each layer with screw holes designed for a sandwich style case
-
-#### case -> screw_count
-
-How many screws to include in this case. Only valid for `sandwich` cases. Must be >= 4.
-
-#### case -> screw_size
-
-The radius for the screw holes.
 
 ### layers
 
@@ -172,7 +167,7 @@ If both `inset` and `oversize` are set, and `oversize` is a positive value, the 
 
 The holes list allows you to specify holes to be cut in this layer. If you place a hole inside an existing cutout the hole will not appear on the final drawing.
 
-This should be a list of lists, with each internal list consisting of [x,y,radius]. The x,y coordinates are measured in MM from the top left corner.
+This should be a list of lists, with each internal list consisting of [x,y,radius]. The x,y coordinates are measured in MM from the top left corner. (NOTE: This will change to be from the center of the layout in a future release.)
 
 You may specify this for any layer.
 
@@ -190,19 +185,7 @@ If this is set to a non-zero value this layer will be made that many MM bigger, 
 
 You may specify this for any layer.
 
-#### layer -> draw_feet
-
-When set to True, feet will be included in the layer. The feet are drawn assuming they will be 9mm thick, and accept an M3 screw. If your keyboard is less than 5 rows tall you may run into problems.
-
-You may specify this on the `closed` and `open` layers.
-
-#### layer -> include_foot_holes
-
-When set to True holes will be cut to accept feet drawn by draw_feet. The holes are cut assuming the feet will be 9mm thick.
-
-You may specify this on the `bottom` layer.
-
-#### layer -> include_usb_cutout
+#### layer -> usb_cutout
 
 If set to true the USB cutout will be included on this layer.
 
@@ -214,8 +197,7 @@ Default for each plate:
 
 * `simple`: 3mm
 * `bottom`: 3mm
-* `closed`: 9mm
-* `open`: 9mm
+* `middle`: 9mm
 * `reinforcing`: 3mm
 * `switch`: 1.5mm
 * `top`: 3mm
@@ -226,8 +208,8 @@ This is a dictionary that sets the properties for the USB cutout.
 
 Options:
 
-* inner_width: How wide the cutout should be on the interior of the plate.
-* outer_width: How wide the cutout should be on the edge of the plate.
+* inner_width: How wide the cutout should be on the interior edge of the plate.
+* outer_width: How wide the cutout should be on the exterior edge of the plate.
 * height: How far below the "outer_width" line to extend the cutout on the bottom layer.
 * offset: How for from the center-point to place the USB cutout.
 
@@ -248,49 +230,68 @@ This dictionary sets every available option.
 
 ```
 {
-    'name': 'example_keyboard',
-    'case_type': 'sandwich',
-    'corner_type': 'round',
-    'corner_radius': 4,
-    'kerf': 0.1,
-    'key_spacing': 19,
-    'screw_hole_size': 2,
-    'screw_hole_number': 8,
-    'layers': {
-        'simple': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
+    "name": "example_keyboard",
+    "case_type": "sandwich",
+    "corner_type": "round",
+    "corner_radius": 4,
+    "feet": {
+      "width": 250,
+      "draw_offset": [-20,0],
+      "screw_offset": 60,
+      "top_foot": [0,-32.25],
+      "bottom_foot": [0,25]
+    },
+    "kerf": 0.1,
+    "key_spacing": 19,
+    "padding": [10,10],
+    "pcb_padding": [2,5],
+    "screw" {
+        "count": 8,
+        "radius": 2,
+    },
+    "switch": "alps",
+    "stabilizer": "matias",
+    "layers": {
+        "simple": {
+            "holes": [[5,5,2]],
+            "polygons": [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
         },
-        'bottom': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
-            'include_foot_holes': True,
+        "bottom": {
+            "holes": [[5,5,2]],
+            "polygons": [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
+            "screw": {
+              "radius": 1.5
+            },
+            "usb_cutout": true
         },
-        'closed': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
-            'draw_feet': True,
-            'oversize': 3,
+        "middle": {
+            "holes": [[5,5,2]],
+            "oversize": 3,
+            "polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
+            "usb_cutout": true
         },
-        'open': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
-            'draw_feet': True,
-            'oversize': 3,
+        "reinforcing": {
+            "inset": True,
+            "holes": [[5,5,2]],
+            "polygons": [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
+            "usb_cutout": false
         },
-        'reinforcing': {
-            'inset': True,
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
+        "switch": {
+            "holes": [[5,5,2]],
+            "polygons": [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
+            "usb_cutout": true
         },
-        'switch': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
-        },
-        'top': {
-            'holes': [[5,5,2]],
-            'polygons: [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]]
+        "top": {
+            "holes": [[5,5,2]],
+            "polygons": [[[1,1], [-1,1], [-1,-1], [-1,1], [1,1]]],
+            "usb_cutout": true
         }
+    },
+    "usb": {
+      "inner_width": 11,
+      "outer_width": 16,
+      "height": 5,
+      "offset": 135
     }
 }
 ```
