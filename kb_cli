@@ -98,7 +98,7 @@ if __name__ == '__main__':
         layout = open(args.file).read()
     else:
         if sys.stdin.isatty():
-            print '*** Paste the KLE data here and press Ctrl-D to process it:'
+            print('*** Paste the KLE data here and press Ctrl-D to process it:')
         layout = sys.stdin.read()
 
     layout = load_layout(layout)
@@ -219,7 +219,7 @@ if __name__ == '__main__':
     # Sanity checks
     if 'layers' not in layout[0] or len(layout[0]['layers']) < 1:
         # FIXME: Print help here
-        print "error: argument --layer is required"
+        print("error: argument --layer is required")
         exit(1)
 
     # Remove layers not in args.only, if specified
@@ -253,10 +253,10 @@ if __name__ == '__main__':
     logging.info("Processing took: {0:.2f} seconds".format(time()-build_start))
 
     # Display info about the plates
-    print '*** Overall plate size: %s x %s mm' % (case.width, case.height)
-    print '*** PCB cutout size: %s x %s mm' % (case.inside_width, case.inside_height)
+    print('*** Overall plate size: %s x %s mm' % (case.width, case.height))
+    print('*** PCB cutout size: %s x %s mm' % (case.inside_width, case.inside_height))
 
     for layer in case.layers:
-        print '*** Files exported for plate', layer
+        print('*** Files exported for plate', layer)
         for file in case.exports[layer]:
-            print '*', file['url'][1:]
+            print('*', file['url'][1:])
